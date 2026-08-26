@@ -1,0 +1,128 @@
+# AI Voice Support Platform
+
+Multi-tenant AI Voice Support Platform for real-time conversational support across customer support, HR, finance, and IT/helpdesk.
+
+Organizations will eventually configure AI voice agents that converse with users, retrieve organization-specific knowledge, invoke backend tools, and escalate to human agents.
+
+> **Status:** repository bootstrap only. No application runtime, AI pipeline, or infrastructure is implemented yet.
+
+---
+
+## Currently implemented
+
+This repository currently contains:
+
+- Monorepo skeleton and directory layout
+- Independent Go modules per deployable service
+- Minimal Makefile placeholders (`test`, `build`, `lint`, `tidy`)
+- Architecture overview and Architecture Decision Records (ADRs)
+- Placeholder directories for shared infrastructure packages, protobufs, deployments, and CI
+
+Nothing under `services/` has handlers, business logic, databases, or integrations yet.
+
+## Planned architecture (not implemented)
+
+The eventual platform is intended to demonstrate:
+
+- Go backend engineering and microservice boundaries
+- Real-time voice (WebRTC / SIP via LiveKit)
+- AI/LLM orchestration, STT/TTS, RAG, and tool calling
+- Event-driven design (e.g. Kafka), caching (Redis), persistence (PostgreSQL)
+- Reliability patterns, observability, containers, Kubernetes, and Terraform-based IaC
+
+See [docs/architecture/README.md](docs/architecture/README.md) for the planned flow and service responsibilities.
+
+---
+
+## Why a monorepo?
+
+Services stay **independently buildable and deployable**, while living in one repository so shared infrastructure packages, ADRs, and path-based CI can evolve together without a multi-repo coordination tax.
+
+Decision details: [ADR 001](docs/architecture/adr/001-monorepo.md).
+
+## Planned services
+
+| Service | Role (planned) | Persistence (planned) |
+|---------|----------------|------------------------|
+| `api-gateway` | External HTTP/API edge, routing, auth boundary | Stateless (no migrations yet) |
+| `voice-gateway` | Bridge between LiveKit / media plane and AI orchestration | Stateless (no migrations yet) |
+| `ai-orchestrator` | Conversation loop: STT → LLM/RAG/tools → TTS, escalation | TBD when domain state is defined |
+| `call-service` | Call lifecycle, metadata, and call-domain persistence | Owns schema/migrations |
+
+Each service has its own `go.mod` and is expected to remain independently deployable. There is **no shared business/domain module**.
+
+## Service ownership
+
+- Business logic for a domain lives **inside the owning service**.
+- Services must not import each other's `internal/` packages.
+- Cross-service communication will use explicit APIs/events (to be designed later), not shared domain libraries.
+
+## Database / migration ownership
+
+- A service that owns persistent data owns its **schema and migrations**.
+- Migration files live under that service (e.g. `services/call-service/migrations/`).
+- There is **no** root-level `migrations/` directory.
+- Logical ownership ≠ physical topology: one PostgreSQL instance may host multiple databases/schemas in development; each service still owns its schema.
+
+Decision details: [ADR 003](docs/architecture/adr/003-service-owned-data.md).
+
+Only `call-service` has a `migrations/` directory today, as the first service expected to own durable call data. Other services will gain migrations only when they own persistent state.
+
+## Technology direction
+
+| Area | Direction | Status |
+|------|-----------|--------|
+| Language | Go, idiomatic modules | Module stubs only |
+| Build | Conventional Go modules + Makefile | Placeholders |
+| Containers | Docker / OCI; Docker Hub as initial registry | Not yet |
+| Orchestration | Kubernetes + Helm (planned) | Directories only |
+| IaC | Terraform, cloud-agnostic layout | Directories only |
+| Cloud | Undecided; AWS currently likely for cost | Not locked ([ADR 004](docs/architecture/adr/004-cloud-provider.md)) |
+| Messaging / cache / DB | Kafka, Redis, PostgreSQL (planned) | Not implemented |
+| CI | GitHub Actions with path filters (planned) | `.github/workflows/` placeholder only |
+
+Build system choice: [ADR 002](docs/architecture/adr/002-go-modules.md).  
+Container tooling: [ADR 005](docs/architecture/adr/005-docker-vs-podman.md).
+
+## Deployment direction (planned)
+
+```
+GitHub → GitHub Actions (path-based) → Docker build → Docker Hub → Kubernetes
+```
+
+Terraform will manage cloud infrastructure once a provider is chosen. No Dockerfiles, Helm charts, Terraform resources, or production CI pipelines exist yet.
+
+## Repository layout
+
+```
+services/           # Independently deployable Go services
+pkg/                # Shared infrastructure concerns only (no domain logic)
+proto/              # Future API / event contracts
+deployments/        # docker /, helm /, terraform / (empty placeholders)
+docs/architecture/  # Architecture overview + ADRs
+.github/workflows/  # Future path-based CI
+Makefile
+README.md
+```
+
+`pkg/` is reserved for reusable platform concerns (Kafka/Redis/Postgres clients, logging, telemetry). It must **not** become a dumping ground for business domains (`user`, `call`, `agent`, etc.).
+
+## Local development
+
+Implementation will proceed incrementally. At this stage there is nothing to run beyond verifying the skeleton:
+
+```bash
+make help
+make tidy
+make test   # no packages yet; will succeed as a no-op loop
+make build  # no packages yet
+```
+
+## Engineering principles
+
+Prefer simple solutions, explicit service boundaries, service-owned data, dependency injection over globals, and incremental delivery. Do not introduce technologies only because they look impressive—verify each architectural layer before building the next.
+
+## Documentation
+
+- [Architecture overview](docs/architecture/README.md)
+- [ADR index](docs/architecture/adr/README.md)
