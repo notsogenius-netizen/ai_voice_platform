@@ -11,7 +11,7 @@ import (
 	lksdk "github.com/livekit/server-sdk-go/v2"
 	"github.com/pion/webrtc/v4"
 
-	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/audio/pcm"
+	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/stt"
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/token"
 )
 
@@ -20,6 +20,7 @@ type Bot struct {
 	LiveKitURL    string
 	Minter        token.Minter
 	STTSampleRate int
+	STT           stt.Client
 }
 
 // Join connects as voice-gateway, logs participants/tracks, and blocks until ctx ends.
@@ -30,9 +31,9 @@ func (b Bot) Join(ctx context.Context, roomName string) error {
 	}
 
 	state := &joinState{
-		ctx:       ctx,
-		bot:       b,
-		pipelines: pcm.NewTrackSet(),
+		ctx:    ctx,
+		bot:    b,
+		tracks: newTrackSet(),
 	}
 	room, err := lksdk.ConnectToRoomWithToken(
 		b.LiveKitURL,
@@ -44,7 +45,7 @@ func (b Bot) Join(ctx context.Context, roomName string) error {
 		return fmt.Errorf("connect bot to room %s: %w", roomName, err)
 	}
 	defer room.Disconnect()
-	defer state.pipelines.CloseAll()
+	defer state.tracks.closeAll()
 	state.room.Store(room)
 
 	log.Printf("roombot: joined room=%s as voice-gateway", roomName)
@@ -56,11 +57,11 @@ func (b Bot) Join(ctx context.Context, roomName string) error {
 }
 
 type joinState struct {
-	room      atomic.Pointer[lksdk.Room]
-	toneOnce  sync.Once
-	ctx       context.Context
-	bot       Bot
-	pipelines *pcm.TrackSet
+	room     atomic.Pointer[lksdk.Room]
+	toneOnce sync.Once
+	ctx      context.Context
+	bot      Bot
+	tracks   *trackSet
 }
 
 func (s *joinState) callbacks(roomName string) *lksdk.RoomCallback {
@@ -106,7 +107,7 @@ func (s *joinState) onTrackUnsubscribed(
 			rp.Identity(),
 			track.ID(),
 		)
-		s.bot.stopPCMTrack(track.ID(), s.pipelines)
+		s.bot.stopAudioTrack(track.ID(), s.tracks)
 	}
 }
 
@@ -128,7 +129,7 @@ func (s *joinState) onTrackSubscribed(
 		s.toneOnce.Do(func() {
 			go s.publishToneWhenReady()
 		})
-		s.bot.startPCMTrack(s.ctx, roomName, track, rp, s.pipelines)
+		s.bot.startAudioTrack(s.ctx, roomName, track, rp, s.tracks)
 	}
 }
 
