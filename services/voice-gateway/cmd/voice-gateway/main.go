@@ -14,6 +14,7 @@ import (
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/httpserver"
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/roombot"
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/session"
+	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/stt/deepgram"
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/token"
 )
 
@@ -33,6 +34,10 @@ func run() error {
 	defer stop()
 
 	logSTTStatus(cfg)
+	if err := validateSTTClient(cfg); err != nil {
+		return err
+	}
+
 	srv, errCh := startServer(cfg, rootCtx)
 	return waitForShutdown(rootCtx, srv, errCh)
 }
@@ -49,6 +54,22 @@ func logSTTStatus(cfg config.Config) {
 	log.Printf("stt: disabled (set DEEPGRAM_API_KEY to enable)")
 }
 
+func validateSTTClient(cfg config.Config) error {
+	if !cfg.STTEnabled() {
+		return nil
+	}
+	_, err := deepgram.NewClient(deepgram.Config{
+		APIKey:         cfg.DeepgramAPIKey,
+		ListenURL:      cfg.DeepgramListenURL,
+		SampleRate:     cfg.STTSampleRate,
+		ConnectTimeout: 10 * time.Second,
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func startServer(cfg config.Config, rootCtx context.Context) (*http.Server, <-chan error) {
 	minter := token.Minter{
 		APIKey:    cfg.LiveKitAPIKey,
@@ -62,8 +83,9 @@ func startServer(cfg config.Config, rootCtx context.Context) (*http.Server, <-ch
 			Minter:     minter,
 			RootCtx:    rootCtx,
 			Bot: roombot.Bot{
-				LiveKitURL: cfg.LiveKitURL,
-				Minter:     minter,
+				LiveKitURL:    cfg.LiveKitURL,
+				Minter:        minter,
+				STTSampleRate: cfg.STTSampleRate,
 			},
 		},
 	}

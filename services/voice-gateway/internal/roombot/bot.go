@@ -11,13 +11,15 @@ import (
 	lksdk "github.com/livekit/server-sdk-go/v2"
 	"github.com/pion/webrtc/v4"
 
+	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/audio/pcm"
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/token"
 )
 
 // Bot connects to LiveKit rooms and observes remote audio tracks.
 type Bot struct {
-	LiveKitURL string
-	Minter     token.Minter
+	LiveKitURL    string
+	Minter        token.Minter
+	STTSampleRate int
 }
 
 // Join connects as voice-gateway, logs participants/tracks, and blocks until ctx ends.
@@ -27,7 +29,11 @@ func (b Bot) Join(ctx context.Context, roomName string) error {
 		return fmt.Errorf("mint bot token: %w", err)
 	}
 
-	state := &joinState{}
+	state := &joinState{
+		ctx:       ctx,
+		bot:       b,
+		pipelines: pcm.NewTrackSet(),
+	}
 	room, err := lksdk.ConnectToRoomWithToken(
 		b.LiveKitURL,
 		jwt,
@@ -38,6 +44,7 @@ func (b Bot) Join(ctx context.Context, roomName string) error {
 		return fmt.Errorf("connect bot to room %s: %w", roomName, err)
 	}
 	defer room.Disconnect()
+	defer state.pipelines.CloseAll()
 	state.room.Store(room)
 
 	log.Printf("roombot: joined room=%s as voice-gateway", roomName)
@@ -49,8 +56,11 @@ func (b Bot) Join(ctx context.Context, roomName string) error {
 }
 
 type joinState struct {
-	room     atomic.Pointer[lksdk.Room]
-	toneOnce sync.Once
+	room      atomic.Pointer[lksdk.Room]
+	toneOnce  sync.Once
+	ctx       context.Context
+	bot       Bot
+	pipelines *pcm.TrackSet
 }
 
 func (s *joinState) callbacks(roomName string) *lksdk.RoomCallback {
@@ -62,17 +72,41 @@ func (s *joinState) callbacks(roomName string) *lksdk.RoomCallback {
 			log.Printf("roombot: participant disconnected room=%s identity=%s", roomName, rp.Identity())
 		},
 		ParticipantCallback: lksdk.ParticipantCallback{
-			OnTrackPublished: func(pub *lksdk.RemoteTrackPublication, rp *lksdk.RemoteParticipant) {
-				log.Printf(
-					"roombot: track published room=%s identity=%s kind=%s name=%s",
-					roomName,
-					rp.Identity(),
-					pub.Kind().String(),
-					pub.Name(),
-				)
-			},
-			OnTrackSubscribed: s.onTrackSubscribed(roomName),
+			OnTrackPublished:    s.onTrackPublished(roomName),
+			OnTrackSubscribed:   s.onTrackSubscribed(roomName),
+			OnTrackUnsubscribed: s.onTrackUnsubscribed(roomName),
 		},
+	}
+}
+
+func (s *joinState) onTrackPublished(
+	roomName string,
+) func(*lksdk.RemoteTrackPublication, *lksdk.RemoteParticipant) {
+	return func(pub *lksdk.RemoteTrackPublication, rp *lksdk.RemoteParticipant) {
+		log.Printf(
+			"roombot: track published room=%s identity=%s kind=%s name=%s",
+			roomName,
+			rp.Identity(),
+			pub.Kind().String(),
+			pub.Name(),
+		)
+	}
+}
+
+func (s *joinState) onTrackUnsubscribed(
+	roomName string,
+) func(*webrtc.TrackRemote, *lksdk.RemoteTrackPublication, *lksdk.RemoteParticipant) {
+	return func(track *webrtc.TrackRemote, _ *lksdk.RemoteTrackPublication, rp *lksdk.RemoteParticipant) {
+		if track.Kind() != webrtc.RTPCodecTypeAudio {
+			return
+		}
+		log.Printf(
+			"roombot: track unsubscribed room=%s identity=%s track=%s",
+			roomName,
+			rp.Identity(),
+			track.ID(),
+		)
+		s.bot.stopPCMTrack(track.ID(), s.pipelines)
 	}
 }
 
@@ -94,6 +128,7 @@ func (s *joinState) onTrackSubscribed(
 		s.toneOnce.Do(func() {
 			go s.publishToneWhenReady()
 		})
+		s.bot.startPCMTrack(s.ctx, roomName, track, rp, s.pipelines)
 	}
 }
 
