@@ -186,7 +186,6 @@ func (s *stream) readLoop(ctx context.Context) {
 
 	for {
 		if ctx.Err() != nil {
-			s.err = ctx.Err()
 			return
 		}
 
@@ -220,6 +219,16 @@ func (s *stream) recordReadErr(err error) {
 }
 
 func (s *stream) emit(tr stt.Transcript) bool {
+	select {
+	case <-s.done:
+		return false
+	default:
+	}
+
+	defer func() {
+		_ = recover()
+	}()
+
 	select {
 	case s.events <- tr:
 		return true

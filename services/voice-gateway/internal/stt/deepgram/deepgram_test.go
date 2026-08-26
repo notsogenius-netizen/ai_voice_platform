@@ -165,6 +165,61 @@ func TestWritePCMEmptyIsNoOp(t *testing.T) {
 	}
 }
 
+func TestWritePCMAfterCloseReturnsError(t *testing.T) {
+	listenURL := startListenServer(t, func(conn *websocket.Conn) {
+		defer conn.Close()
+		time.Sleep(50 * time.Millisecond)
+	})
+
+	client, err := deepgram.NewClient(deepgram.Config{
+		APIKey:         "test-key",
+		ListenURL:      listenURL,
+		ConnectTimeout: time.Second,
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	stream, err := client.Open(context.Background(), stt.Session{Room: "room-1"})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if err := stream.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if err := stream.WritePCM([]byte{1, 2}); err == nil {
+		t.Fatal("expected write error after close")
+	}
+}
+
+func TestContextCancelCloseIsClean(t *testing.T) {
+	listenURL := startListenServer(t, func(conn *websocket.Conn) {
+		defer conn.Close()
+		time.Sleep(200 * time.Millisecond)
+	})
+
+	client, err := deepgram.NewClient(deepgram.Config{
+		APIKey:         "test-key",
+		ListenURL:      listenURL,
+		ConnectTimeout: time.Second,
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	stream, err := client.Open(ctx, stt.Session{Room: "room-1"})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	cancel()
+	time.Sleep(50 * time.Millisecond)
+	if err := stream.Close(); err != nil {
+		t.Fatalf("Close after cancel: %v", err)
+	}
+}
+
 func TestCloseIsIdempotent(t *testing.T) {
 	listenURL := startListenServer(t, func(conn *websocket.Conn) {
 		defer conn.Close()
