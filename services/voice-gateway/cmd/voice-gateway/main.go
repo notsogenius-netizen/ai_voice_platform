@@ -38,6 +38,16 @@ func run() error {
 		ValidFor:  time.Hour,
 	}
 
+	if cfg.STTEnabled() {
+		log.Printf(
+			"stt: enabled provider=deepgram sample_rate=%d listen_url=%s",
+			cfg.STTSampleRate,
+			cfg.DeepgramListenURL,
+		)
+	} else {
+		log.Printf("stt: disabled (set DEEPGRAM_API_KEY to enable)")
+	}
+
 	deps := httpserver.Deps{
 		Sessions: session.Service{
 			LiveKitURL: cfg.LiveKitURL,
