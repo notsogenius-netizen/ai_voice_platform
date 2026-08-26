@@ -19,6 +19,11 @@ func BrowserGrants() Grants {
 	return Grants{CanPublish: true, CanSubscribe: true}
 }
 
+// BotGrants are grants for the server-side voice-gateway participant.
+func BotGrants() Grants {
+	return Grants{CanPublish: true, CanSubscribe: true}
+}
+
 // Minter creates LiveKit JWTs using an API key/secret pair.
 type Minter struct {
 	APIKey    string
