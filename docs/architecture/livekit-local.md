@@ -64,3 +64,7 @@ LiveKit responds on the HTTP signal port when the process is up. Check container
 ```bash
 docker compose -f deployments/docker/docker-compose.livekit.yml ps
 ```
+
+## Phase 2 STT
+
+With `DEEPGRAM_API_KEY` in `.env`, `voice-gateway` streams transcripts while you speak. See [stt-phase2.md](stt-phase2.md) for the full verification checklist.

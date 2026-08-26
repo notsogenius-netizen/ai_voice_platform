@@ -1,6 +1,8 @@
-# Voice Prototype (Phase 1)
+# Voice Prototype (Phase 1–2)
 
 Minimal browser client: request a session from `voice-gateway`, join LiveKit, publish microphone audio, and play the gateway verification tone.
+
+When `DEEPGRAM_API_KEY` is configured on the gateway, speaking into the mic produces partial/final transcript logs on the server (not shown in this UI). See [docs/architecture/stt-phase2.md](../../docs/architecture/stt-phase2.md).
 
 ## Prerequisites
 
