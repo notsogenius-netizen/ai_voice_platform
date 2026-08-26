@@ -51,12 +51,26 @@ func WriteJSON(w io.Writer, res analyzer.Result, sum Summary, meta Meta) error {
 		LegacyMinor:       sum.LegacyMinor,
 		Passed:            sum.Passed,
 		Result:            resultString(sum.Passed),
-		Violations:        res.Violations,
-		ParseErrors:       res.ParseErrors,
+		Violations:        nonNilViolations(res.Violations),
+		ParseErrors:       nonNilStrings(res.ParseErrors),
 	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(rep)
+}
+
+func nonNilViolations(vs []analyzer.Violation) []analyzer.Violation {
+	if vs == nil {
+		return []analyzer.Violation{}
+	}
+	return vs
+}
+
+func nonNilStrings(ss []string) []string {
+	if ss == nil {
+		return []string{}
+	}
+	return ss
 }
 
 func resultString(passed bool) string {

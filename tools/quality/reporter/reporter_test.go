@@ -114,6 +114,29 @@ func TestWriteJSON(t *testing.T) {
 	}
 }
 
+func TestWriteJSONEmptyViolations(t *testing.T) {
+	var buf bytes.Buffer
+	res := analyzer.Result{}
+	sum := reporter.BuildSummary(res, rules.SeverityMajor)
+	if err := reporter.WriteJSON(&buf, res, sum, reporter.Meta{Base: "main"}); err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if doc["violations"] == nil {
+		t.Fatal("violations must be [] not null")
+	}
+	vs, ok := doc["violations"].([]any)
+	if !ok {
+		t.Fatalf("violations type=%T", doc["violations"])
+	}
+	if len(vs) != 0 {
+		t.Fatalf("violations=%v", vs)
+	}
+}
+
 func TestWriteSARIF(t *testing.T) {
 	var buf bytes.Buffer
 	res := sampleResult()

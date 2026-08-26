@@ -32,30 +32,37 @@ jobs:
           set +e
           make quality-report
           code=$?
-          set -e
-          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+
           if [ -f dist/quality-report.json ]; then
             {
               echo "## Code Quality Report"
               echo ""
               if command -v jq >/dev/null 2>&1; then
                 passed=$(jq -r '.passed' dist/quality-report.json)
+                files=$(jq -r '.files_analyzed' dist/quality-report.json)
                 echo "- **Result:** $(jq -r '.result' dist/quality-report.json)"
                 echo "- **New major:** $(jq -r '.new_major_violations' dist/quality-report.json)"
                 echo "- **New minor:** $(jq -r '.new_minor_violations' dist/quality-report.json)"
-                echo "- **Files analyzed:** $(jq -r '.files_analyzed' dist/quality-report.json)"
+                echo "- **Files analyzed:** ${files}"
                 echo "- **Functions analyzed:** $(jq -r '.functions_analyzed' dist/quality-report.json)"
                 echo ""
-                echo "### New violations"
-                echo ""
-                echo '```'
-                jq -r '
-                  .violations[]
-                  | select(.is_new == true)
-                  | "- [\(.severity | ascii_upcase)] \(.file):\(.line) \(.rule_id) actual=\(.actual) threshold=\(.threshold)" +
-                    (if .function != "" then " func=\(.function)" else "" end)
-                ' dist/quality-report.json
-                echo '```'
+                if [ "${files}" = "0" ]; then
+                  echo "No Go source files changed relative to \`$BASE\` — quality gate skipped analysis."
+                else
+                  echo "### New violations"
+                  echo ""
+                  echo '```'
+                  jq -r '
+                    (.violations // [])[]
+                    | select(.is_new == true)
+                    | "- [\(.severity | ascii_upcase)] \(.file):\(.line) \(.rule_id) actual=\(.actual) threshold=\(.threshold)" +
+                      (if .function != "" then " func=\(.function)" else "" end)
+                  ' dist/quality-report.json
+                  if [ "$(jq -r '[.violations // [] | .[] | select(.is_new == true)] | length' dist/quality-report.json)" = "0" ]; then
+                    echo "(none)"
+                  fi
+                  echo '```'
+                fi
                 if [ "$passed" != "true" ]; then
                   echo ""
                   echo "> Gate failed: new MAJOR violations were introduced relative to \`$BASE\`."
@@ -65,6 +72,7 @@ jobs:
               fi
             } >> "$GITHUB_STEP_SUMMARY"
           fi
+
           exit "$code"
 
       - name: Upload quality reports
