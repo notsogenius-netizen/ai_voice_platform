@@ -12,6 +12,8 @@ import (
 
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/config"
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/httpserver"
+	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/session"
+	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/token"
 )
 
 func main() {
@@ -26,9 +28,20 @@ func run() error {
 		return err
 	}
 
+	deps := httpserver.Deps{
+		Sessions: session.Service{
+			LiveKitURL: cfg.LiveKitURL,
+			Minter: token.Minter{
+				APIKey:    cfg.LiveKitAPIKey,
+				APISecret: cfg.LiveKitAPISecret,
+				ValidFor:  time.Hour,
+			},
+		},
+	}
+
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           httpserver.NewMux(cfg),
+		Handler:           httpserver.NewMux(cfg, deps),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -38,6 +51,10 @@ func run() error {
 		errCh <- srv.ListenAndServe()
 	}()
 
+	return waitForShutdown(srv, errCh)
+}
+
+func waitForShutdown(srv *http.Server, errCh <-chan error) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
