@@ -47,3 +47,10 @@ override.tf.json
 # Misc
 tmp/
 *.log
+
+# Quality reports
+dist/quality-report.json
+dist/quality-report.sarif
+
+# Local quality binary
+tools/quality/bin/

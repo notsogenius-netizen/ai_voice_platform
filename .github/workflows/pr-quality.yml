@@ -1,0 +1,86 @@
+name: PR Code Quality
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+
+jobs:
+  quality:
+    name: Custom Go quality gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.3"
+          cache-dependency-path: tools/quality/go.sum
+
+      - name: Run quality gate
+        id: quality
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: |
+          set +e
+          make quality-report
+          code=$?
+          set -e
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          if [ -f dist/quality-report.json ]; then
+            {
+              echo "## Code Quality Report"
+              echo ""
+              if command -v jq >/dev/null 2>&1; then
+                passed=$(jq -r '.passed' dist/quality-report.json)
+                echo "- **Result:** $(jq -r '.result' dist/quality-report.json)"
+                echo "- **New major:** $(jq -r '.new_major_violations' dist/quality-report.json)"
+                echo "- **New minor:** $(jq -r '.new_minor_violations' dist/quality-report.json)"
+                echo "- **Files analyzed:** $(jq -r '.files_analyzed' dist/quality-report.json)"
+                echo "- **Functions analyzed:** $(jq -r '.functions_analyzed' dist/quality-report.json)"
+                echo ""
+                echo "### New violations"
+                echo ""
+                echo '```'
+                jq -r '
+                  .violations[]
+                  | select(.is_new == true)
+                  | "- [\(.severity | ascii_upcase)] \(.file):\(.line) \(.rule_id) actual=\(.actual) threshold=\(.threshold)" +
+                    (if .function != "" then " func=\(.function)" else "" end)
+                ' dist/quality-report.json
+                echo '```'
+                if [ "$passed" != "true" ]; then
+                  echo ""
+                  echo "> Gate failed: new MAJOR violations were introduced relative to \`$BASE\`."
+                fi
+              else
+                cat dist/quality-report.json
+              fi
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$code"
+
+      - name: Upload quality reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-reports
+          path: |
+            dist/quality-report.json
+            dist/quality-report.sarif
+          if-no-files-found: warn
+
+      - name: Upload SARIF to code scanning
+        if: always() && hashFiles('dist/quality-report.sarif') != ''
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: dist/quality-report.sarif
+          category: custom-quality

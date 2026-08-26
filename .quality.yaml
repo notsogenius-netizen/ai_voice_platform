@@ -1,0 +1,36 @@
+# Code quality gate configuration for the AI Voice Support Platform.
+#
+# MINOR findings are reported but do not fail the gate by default.
+# MAJOR findings fail the gate when they are newly introduced vs --base.
+
+quality:
+  fail_on: major
+
+rules:
+  methods_per_file:
+    minor: 25
+    major: 35
+
+  returns_per_function:
+    minor: 5
+    major: 7
+
+  complexity:
+    minor: 5
+    major: 10
+
+  loc_per_file:
+    minor: 250
+    major: 400
+
+  function_length:
+    minor: 20
+    major: 30
+
+  parameters:
+    minor: 5
+    major: 8
+
+  nesting_depth:
+    minor: 3
+    major: 5
