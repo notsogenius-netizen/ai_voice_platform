@@ -9,7 +9,7 @@
   <body>
     <main>
       <h1>Voice Prototype</h1>
-      <p class="lede">Phase 1 / F4 — connect to LiveKit and publish microphone audio.</p>
+      <p class="lede">Phase 1 — connect to LiveKit, publish mic, hear gateway verification tone.</p>
 
       <div class="actions">
         <button id="connectBtn" type="button">Connect + publish mic</button>
@@ -34,10 +34,16 @@
           <dd id="micState">not published</dd>
         </div>
         <div>
+          <dt>Remote audio</dt>
+          <dd id="remoteAudioState">none</dd>
+        </div>
+        <div>
           <dt>Participants</dt>
           <dd id="participants">—</dd>
         </div>
       </dl>
+
+      <audio id="remoteAudio" autoplay playsinline></audio>
 
       <pre id="log" aria-live="polite"></pre>
     </main>

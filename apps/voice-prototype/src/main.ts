@@ -1,5 +1,6 @@
 import {
   ConnectionState,
+  RemoteTrack,
   Room,
   RoomEvent,
   Track,
@@ -23,8 +24,10 @@ const connectionStateEl = document.querySelector("#connectionState")!;
 const roomNameEl = document.querySelector("#roomName")!;
 const identityEl = document.querySelector("#identity")!;
 const micStateEl = document.querySelector("#micState")!;
+const remoteAudioStateEl = document.querySelector("#remoteAudioState")!;
 const participantsEl = document.querySelector("#participants")!;
 const logEl = document.querySelector("#log")!;
+const remoteAudioEl = document.querySelector<HTMLAudioElement>("#remoteAudio")!;
 
 let room: Room | null = null;
 
@@ -41,6 +44,16 @@ function refreshParticipants(active: Room): void {
   const names = [active.localParticipant.identity];
   active.remoteParticipants.forEach((p) => names.push(p.identity));
   participantsEl.textContent = names.join(", ") || "—";
+}
+
+function attachRemoteAudio(track: RemoteTrack): void {
+  track.attach(remoteAudioEl);
+  void remoteAudioEl.play().catch((err: unknown) => {
+    const message = err instanceof Error ? err.message : String(err);
+    log(`remote audio play blocked: ${message}`);
+  });
+  remoteAudioStateEl.textContent = `playing (${track.sid})`;
+  log(`remote audio attached: ${track.sid}`);
 }
 
 function wireRoomEvents(active: Room): void {
@@ -61,6 +74,13 @@ function wireRoomEvents(active: Room): void {
       micStateEl.textContent = `published (${pub.trackName})`;
       log(`local mic published: ${pub.trackName}`);
     }
+  });
+  active.on(RoomEvent.TrackSubscribed, (track, pub, participant) => {
+    if (track.kind !== Track.Kind.Audio) {
+      return;
+    }
+    log(`subscribed remote audio from ${participant.identity} (${pub.trackName})`);
+    attachRemoteAudio(track);
   });
 }
 
@@ -108,8 +128,10 @@ async function disconnect(): Promise<void> {
     await room.disconnect();
     room = null;
   }
+  remoteAudioEl.srcObject = null;
   setConnectionState("disconnected");
   micStateEl.textContent = "not published";
+  remoteAudioStateEl.textContent = "none";
   participantsEl.textContent = "—";
   connectBtn.disabled = false;
   log("disconnected");

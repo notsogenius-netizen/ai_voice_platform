@@ -2,7 +2,7 @@
 
 High-level architecture for the AI Voice Support Platform.
 
-> This document describes **planned** design. The repository is currently a skeleton only—none of the runtime components below are implemented.
+> **Phase 1 media path is implemented:** browser ↔ LiveKit ↔ `voice-gateway` (session tokens, room bot, verification tone). AI/STT/TTS and later services remain planned.
 
 ---
 
@@ -17,19 +17,19 @@ Organizations need multi-tenant voice support agents that can:
 
 Support domains include customer support, HR, finance, and IT/helpdesk.
 
-## Planned core voice flow
+## Core voice flow
 
 ```
-Caller
-  │  WebRTC / SIP
+Browser (apps/voice-prototype)
+  │  WebRTC
   ▼
-LiveKit
+LiveKit (local Docker)
   │
   ▼
-Voice Gateway
+Voice Gateway  ← Phase 1 (tokens, subscribe, verification tone)
   │
   ▼
-AI Orchestrator
+AI Orchestrator  ← later phases
   │
   ├── Speech-to-Text
   ├── LLM
@@ -50,16 +50,14 @@ Supporting capabilities planned around this core:
 - Analytics / notification workers, recording / object storage
 - Observability, Kubernetes, Terraform, cloud deployment
 
-**None of the above are implemented in this bootstrap.**
+## Service responsibilities
 
-## Planned service responsibilities
-
-| Service | Responsibility | Owns data? |
-|---------|----------------|------------|
-| **api-gateway** | External API surface, request routing, future auth/tenancy boundary | No (stateless edge) |
-| **voice-gateway** | Media-plane adapter: LiveKit sessions ↔ orchestration signals | No (real-time bridge) |
-| **ai-orchestrator** | Conversation control plane: STT/LLM/TTS/RAG/tools/escalation orchestration | TBD when durable agent/session state is defined |
-| **call-service** | Call records, lifecycle state, call-domain queries | Yes — owns schema + migrations |
+| Service | Responsibility | Owns data? | Status |
+|---------|----------------|------------|--------|
+| **api-gateway** | External API surface, request routing, future auth/tenancy boundary | No (stateless edge) | Skeleton |
+| **voice-gateway** | Media-plane adapter: LiveKit sessions ↔ orchestration signals | No (real-time bridge) | Phase 1 runtime |
+| **ai-orchestrator** | Conversation control plane: STT/LLM/TTS/RAG/tools/escalation orchestration | TBD when durable agent/session state is defined | Skeleton |
+| **call-service** | Call records, lifecycle state, call-domain queries | Yes — owns schema + migrations | Skeleton |
 
 ### Ownership rules
 
@@ -103,11 +101,11 @@ Intended (future) contents:
 
 Forbidden: domain types or repositories (`pkg/call`, `pkg/agent`, etc.).
 
-## Deployments and CI (planned)
+## Deployments and CI
 
 ```
 deployments/
-  docker/      # Dockerfiles / Compose when first service ships
+  docker/      # LiveKit Compose (Phase 1); service Dockerfiles later
   helm/        # Kubernetes charts later
   terraform/   # Cloud IaC later (provider undecided)
 
@@ -120,11 +118,11 @@ Intended CI shape:
 - Change under `pkg/**` → rebuild/test services that depend on the changed package
 - Migration changes under a service → treated as a change to that service
 
-Cloud provider is intentionally unlocked; Terraform will isolate provider-specific modules when deployment starts (ADR 004). Docker is the primary container toolchain (ADR 005).
+Cloud provider is intentionally unlocked; Terraform will isolate provider-specific modules when deployment starts (ADR 004). Docker is the primary container toolchain (ADR 005). LiveKit + Phase-1 token ownership: ADR 006.
 
 ## Incremental delivery
 
-Implementation will proceed layer by layer. Each step should verify boundaries and ownership before adding the next technology. Prefer production-realistic simplicity over resume-driven complexity.
+Implementation proceeds layer by layer. Each step should verify boundaries and ownership before adding the next technology. Prefer production-realistic simplicity over resume-driven complexity.
 
 ## Local LiveKit
 

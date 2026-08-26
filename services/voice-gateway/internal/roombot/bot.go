@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
+	"sync/atomic"
 
 	lksdk "github.com/livekit/server-sdk-go/v2"
 	"github.com/pion/webrtc/v4"
@@ -25,16 +27,18 @@ func (b Bot) Join(ctx context.Context, roomName string) error {
 		return fmt.Errorf("mint bot token: %w", err)
 	}
 
+	state := &joinState{}
 	room, err := lksdk.ConnectToRoomWithToken(
 		b.LiveKitURL,
 		jwt,
-		newCallbacks(roomName),
+		state.callbacks(roomName),
 		lksdk.WithAutoSubscribe(true),
 	)
 	if err != nil {
 		return fmt.Errorf("connect bot to room %s: %w", roomName, err)
 	}
 	defer room.Disconnect()
+	state.room.Store(room)
 
 	log.Printf("roombot: joined room=%s as voice-gateway", roomName)
 	logExistingRemotes(room)
@@ -44,7 +48,12 @@ func (b Bot) Join(ctx context.Context, roomName string) error {
 	return nil
 }
 
-func newCallbacks(roomName string) *lksdk.RoomCallback {
+type joinState struct {
+	room     atomic.Pointer[lksdk.Room]
+	toneOnce sync.Once
+}
+
+func (s *joinState) callbacks(roomName string) *lksdk.RoomCallback {
 	return &lksdk.RoomCallback{
 		OnParticipantConnected: func(rp *lksdk.RemoteParticipant) {
 			log.Printf("roombot: participant connected room=%s identity=%s", roomName, rp.Identity())
@@ -62,12 +71,14 @@ func newCallbacks(roomName string) *lksdk.RoomCallback {
 					pub.Name(),
 				)
 			},
-			OnTrackSubscribed: onTrackSubscribed(roomName),
+			OnTrackSubscribed: s.onTrackSubscribed(roomName),
 		},
 	}
 }
 
-func onTrackSubscribed(roomName string) func(*webrtc.TrackRemote, *lksdk.RemoteTrackPublication, *lksdk.RemoteParticipant) {
+func (s *joinState) onTrackSubscribed(
+	roomName string,
+) func(*webrtc.TrackRemote, *lksdk.RemoteTrackPublication, *lksdk.RemoteParticipant) {
 	return func(track *webrtc.TrackRemote, pub *lksdk.RemoteTrackPublication, rp *lksdk.RemoteParticipant) {
 		log.Printf(
 			"roombot: track subscribed room=%s identity=%s kind=%s name=%s sid=%s",
@@ -77,7 +88,24 @@ func onTrackSubscribed(roomName string) func(*webrtc.TrackRemote, *lksdk.RemoteT
 			pub.Name(),
 			track.ID(),
 		)
+		if track.Kind() != webrtc.RTPCodecTypeAudio {
+			return
+		}
+		s.toneOnce.Do(func() {
+			go s.publishToneWhenReady()
+		})
 	}
+}
+
+func (s *joinState) publishToneWhenReady() {
+	for range 50 {
+		if room := s.room.Load(); room != nil {
+			publishVerificationTone(room)
+			return
+		}
+		waitBriefly()
+	}
+	log.Printf("roombot: skipped verification tone; room pointer unavailable")
 }
 
 func logExistingRemotes(room *lksdk.Room) {
