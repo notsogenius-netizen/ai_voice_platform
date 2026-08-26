@@ -1,7 +1,7 @@
 # AI Voice Support Platform — bootstrap Makefile
 
 .PHONY: help test build lint tidy quality quality-report quality-test quality-baseline quality-build \
-	livekit-up livekit-down run-voice-gateway
+	livekit-up livekit-down run-voice-gateway run-voice-prototype
 
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 QUALITY_DIR := $(ROOT)/tools/quality
@@ -10,6 +10,7 @@ BASE ?=
 QUALITY_BIN := $(QUALITY_DIR)/bin/quality
 LIVEKIT_COMPOSE := $(ROOT)/deployments/docker/docker-compose.livekit.yml
 VOICE_GATEWAY_DIR := $(ROOT)/services/voice-gateway
+VOICE_PROTOTYPE_DIR := $(ROOT)/apps/voice-prototype
 
 help:
 	@echo "Available targets:"
@@ -20,6 +21,7 @@ help:
 	@echo "  make livekit-up      - start local LiveKit (Docker Compose)"
 	@echo "  make livekit-down    - stop local LiveKit"
 	@echo "  make run-voice-gateway - run voice-gateway (loads .env if present)"
+	@echo "  make run-voice-prototype - run browser voice prototype (Vite)"
 	@echo "  make quality         - run custom Go quality gate (BASE=origin/main for PR mode)"
 	@echo "  make quality-report  - run quality gate and write JSON+SARIF under dist/"
 	@echo "  make quality-test    - run quality tool unit tests"
@@ -37,6 +39,12 @@ livekit-down:
 run-voice-gateway:
 	@if [ -f "$(ROOT)/.env" ]; then set -a; . "$(ROOT)/.env"; set +a; fi; \
 	cd "$(VOICE_GATEWAY_DIR)" && go run ./cmd/voice-gateway
+
+# Minimal browser client (Phase 1 / F4).
+run-voice-prototype:
+	@cd "$(VOICE_PROTOTYPE_DIR)" && \
+		if [ ! -d node_modules ]; then npm install; fi && \
+		npm run dev
 
 # Run tests in each service module that has packages.
 # Empty modules (bootstrap) are skipped so the target stays green.

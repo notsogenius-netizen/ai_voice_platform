@@ -45,9 +45,11 @@ These match [`.env.example`](../../.env.example). **Dev-only** — do not reuse 
 
 ## How the browser connects
 
-1. Backend creates a room name and mints an access token (identity + room + grants).
-2. Browser connects to `LIVEKIT_URL` with that token via `livekit-client`.
-3. Browser publishes microphone audio; other participants (including a server bot) can subscribe.
+1. Start LiveKit and `voice-gateway` (`make livekit-up`, `make run-voice-gateway`).
+2. Start the prototype UI: `make run-voice-prototype` → http://127.0.0.1:5173
+3. The page calls `POST /v1/sessions`, connects to LiveKit with the returned token, and publishes the microphone.
+
+See [`apps/voice-prototype/README.md`](../../apps/voice-prototype/README.md).
 
 ## Health check
 
