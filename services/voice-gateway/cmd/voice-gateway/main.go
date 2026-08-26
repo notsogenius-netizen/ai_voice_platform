@@ -32,6 +32,24 @@ func run() error {
 	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	logSTTStatus(cfg)
+	srv, errCh := startServer(cfg, rootCtx)
+	return waitForShutdown(rootCtx, srv, errCh)
+}
+
+func logSTTStatus(cfg config.Config) {
+	if cfg.STTEnabled() {
+		log.Printf(
+			"stt: enabled provider=deepgram sample_rate=%d listen_url=%s",
+			cfg.STTSampleRate,
+			cfg.DeepgramListenURL,
+		)
+		return
+	}
+	log.Printf("stt: disabled (set DEEPGRAM_API_KEY to enable)")
+}
+
+func startServer(cfg config.Config, rootCtx context.Context) (*http.Server, <-chan error) {
 	minter := token.Minter{
 		APIKey:    cfg.LiveKitAPIKey,
 		APISecret: cfg.LiveKitAPISecret,
@@ -61,8 +79,7 @@ func run() error {
 		log.Printf("voice-gateway listening on %s", cfg.Addr)
 		errCh <- srv.ListenAndServe()
 	}()
-
-	return waitForShutdown(rootCtx, srv, errCh)
+	return srv, errCh
 }
 
 func waitForShutdown(ctx context.Context, srv *http.Server, errCh <-chan error) error {
