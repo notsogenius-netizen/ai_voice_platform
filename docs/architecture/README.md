@@ -126,6 +126,10 @@ Cloud provider is intentionally unlocked; Terraform will isolate provider-specif
 
 Implementation will proceed layer by layer. Each step should verify boundaries and ownership before adding the next technology. Prefer production-realistic simplicity over resume-driven complexity.
 
+## Local LiveKit
+
+Phase 1 local SFU setup: [livekit-local.md](livekit-local.md).
+
 ## ADRs
 
 See [adr/README.md](adr/README.md).

@@ -1,0 +1,24 @@
+# Local LiveKit for Phase 1 development.
+# Usage: make livekit-up  (from repo root)
+#
+# On macOS/Windows Docker Desktop, host networking is unavailable; we publish
+# signal (7880), RTC/TCP (7881), and RTC/UDP mux (7882) explicitly.
+
+services:
+  livekit:
+    image: livekit/livekit-server:v1.9.1
+    container_name: ai-voice-livekit
+    command: --config /etc/livekit.yaml
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:7880/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped

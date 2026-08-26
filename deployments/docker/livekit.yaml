@@ -1,0 +1,22 @@
+# Local development config for LiveKit Server.
+# Dev API key/secret match .env.example — never use these in production.
+
+port: 7880
+bind_addresses:
+  - "0.0.0.0"
+
+rtc:
+  tcp_port: 7881
+  # Single UDP mux port is easier to publish from Docker Desktop on macOS.
+  udp_port: 7882
+  use_external_ip: false
+  # Advertise loopback so browsers on the same machine get working ICE candidates.
+  node_ip: 127.0.0.1
+
+# API key: secret (JWT signing for access tokens)
+keys:
+  # Must be >= 32 characters (LiveKit validates key length).
+  devkey: devsecret_ai_voice_platform_local_only
+
+logging:
+  level: info

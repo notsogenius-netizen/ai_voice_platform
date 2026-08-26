@@ -1,12 +1,15 @@
 # AI Voice Support Platform — bootstrap Makefile
 
-.PHONY: help test build lint tidy quality quality-report quality-test quality-baseline quality-build
+.PHONY: help test build lint tidy quality quality-report quality-test quality-baseline quality-build \
+	livekit-up livekit-down run-voice-gateway
 
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 QUALITY_DIR := $(ROOT)/tools/quality
 DIST := $(ROOT)/dist
 BASE ?=
 QUALITY_BIN := $(QUALITY_DIR)/bin/quality
+LIVEKIT_COMPOSE := $(ROOT)/deployments/docker/docker-compose.livekit.yml
+VOICE_GATEWAY_DIR := $(ROOT)/services/voice-gateway
 
 help:
 	@echo "Available targets:"
@@ -14,10 +17,26 @@ help:
 	@echo "  make build           - build all services"
 	@echo "  make lint            - lint all services"
 	@echo "  make tidy            - run go mod tidy in each service module"
+	@echo "  make livekit-up      - start local LiveKit (Docker Compose)"
+	@echo "  make livekit-down    - stop local LiveKit"
+	@echo "  make run-voice-gateway - run voice-gateway (loads .env if present)"
 	@echo "  make quality         - run custom Go quality gate (BASE=origin/main for PR mode)"
 	@echo "  make quality-report  - run quality gate and write JSON+SARIF under dist/"
 	@echo "  make quality-test    - run quality tool unit tests"
 	@echo "  make quality-baseline - analyze working tree without base comparison (full inventory)"
+
+# Local LiveKit SFU for Phase 1 browser voice work.
+livekit-up:
+	docker compose -f "$(LIVEKIT_COMPOSE)" up -d
+	@echo "LiveKit starting; signal URL ws://127.0.0.1:7880 (see docs/architecture/livekit-local.md)"
+
+livekit-down:
+	docker compose -f "$(LIVEKIT_COMPOSE)" down
+
+# Run voice-gateway with env from .env when present.
+run-voice-gateway:
+	@if [ -f "$(ROOT)/.env" ]; then set -a; . "$(ROOT)/.env"; set +a; fi; \
+	cd "$(VOICE_GATEWAY_DIR)" && go run ./cmd/voice-gateway
 
 # Run tests in each service module that has packages.
 # Empty modules (bootstrap) are skipped so the target stays green.
