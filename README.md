@@ -4,7 +4,7 @@ Multi-tenant AI Voice Support Platform for real-time conversational support acro
 
 Organizations will eventually configure AI voice agents that converse with users, retrieve organization-specific knowledge, invoke backend tools, and escalate to human agents.
 
-> **Status:** repository bootstrap only. No application runtime, AI pipeline, or infrastructure is implemented yet.
+> **Status:** Phase 1 media path is runnable locally (LiveKit + `voice-gateway` + browser prototype). AI pipeline and later infrastructure are not implemented yet.
 
 ---
 
@@ -14,11 +14,11 @@ This repository currently contains:
 
 - Monorepo skeleton and directory layout
 - Independent Go modules per deployable service
-- Minimal Makefile placeholders (`test`, `build`, `lint`, `tidy`)
-- Architecture overview and Architecture Decision Records (ADRs)
-- Placeholder directories for shared infrastructure packages, protobufs, deployments, and CI
+- Makefile targets for tests, quality gate, LiveKit, voice-gateway, and the browser prototype
+- Architecture overview and Architecture Decision Records (ADRs), including LiveKit (ADR 006)
+- **Phase 1:** local LiveKit (Docker), `voice-gateway` session tokens + room bot + verification tone, `apps/voice-prototype` browser client
 
-Nothing under `services/` has handlers, business logic, databases, or integrations yet.
+AI/STT/TTS, Kafka, Redis, PostgreSQL runtime, Kubernetes, and cloud deploy are still ahead.
 
 ## Planned architecture (not implemented)
 
@@ -72,17 +72,19 @@ Only `call-service` has a `migrations/` directory today, as the first service ex
 
 | Area | Direction | Status |
 |------|-----------|--------|
-| Language | Go, idiomatic modules | Module stubs only |
-| Build | Conventional Go modules + Makefile | Placeholders |
-| Containers | Docker / OCI; Docker Hub as initial registry | Not yet |
+| Language | Go, idiomatic modules | voice-gateway implemented; others stubs |
+| Build | Conventional Go modules + Makefile | Active |
+| Realtime media | LiveKit (browser WebRTC) | Phase 1 local Docker + gateway |
+| Containers | Docker / OCI; Docker Hub as initial registry | LiveKit Compose only so far |
 | Orchestration | Kubernetes + Helm (planned) | Directories only |
 | IaC | Terraform, cloud-agnostic layout | Directories only |
 | Cloud | Undecided; AWS currently likely for cost | Not locked ([ADR 004](docs/architecture/adr/004-cloud-provider.md)) |
 | Messaging / cache / DB | Kafka, Redis, PostgreSQL (planned) | Not implemented |
-| CI | GitHub Actions with path filters (planned) | `.github/workflows/` placeholder only |
+| CI | GitHub Actions with path filters (planned) | Quality workflow present; deploy later |
 
 Build system choice: [ADR 002](docs/architecture/adr/002-go-modules.md).  
-Container tooling: [ADR 005](docs/architecture/adr/005-docker-vs-podman.md).
+Container tooling: [ADR 005](docs/architecture/adr/005-docker-vs-podman.md).  
+LiveKit / tokens: [ADR 006](docs/architecture/adr/006-livekit-media-and-tokens.md).
 
 ## Deployment direction (planned)
 
