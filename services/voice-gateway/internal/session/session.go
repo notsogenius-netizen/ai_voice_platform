@@ -2,7 +2,9 @@
 package session
 
 import (
+	"context"
 	"fmt"
+	"log"
 
 	"github.com/google/uuid"
 
@@ -22,13 +24,20 @@ type Response struct {
 	Identity   string `json:"identity"`
 }
 
+// Joiner connects the voice-gateway bot into a LiveKit room.
+type Joiner interface {
+	Join(ctx context.Context, roomName string) error
+}
+
 // Service creates sessions backed by LiveKit tokens.
 type Service struct {
 	LiveKitURL string
 	Minter     token.Minter
+	RootCtx    context.Context
+	Bot        Joiner
 }
 
-// Create allocates a room name and mints a browser participant token.
+// Create allocates a room name, mints a browser token, and starts the bot join.
 func (s Service) Create(req Request) (Response, error) {
 	identity := req.Identity
 	if identity == "" {
@@ -41,10 +50,27 @@ func (s Service) Create(req Request) (Response, error) {
 		return Response{}, fmt.Errorf("mint token: %w", err)
 	}
 
+	s.startBot(room)
+
 	return Response{
 		Room:       room,
 		LiveKitURL: s.LiveKitURL,
 		Token:      jwt,
 		Identity:   identity,
 	}, nil
+}
+
+func (s Service) startBot(room string) {
+	if s.Bot == nil {
+		return
+	}
+	ctx := s.RootCtx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	go func() {
+		if err := s.Bot.Join(ctx, room); err != nil {
+			log.Printf("session bot join room=%s: %v", room, err)
+		}
+	}()
 }

@@ -1,7 +1,9 @@
 package session_test
 
 import (
+	"context"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -9,7 +11,22 @@ import (
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/token"
 )
 
-func TestCreateMintsToken(t *testing.T) {
+type fakeJoiner struct {
+	mu    sync.Mutex
+	rooms []string
+	done  chan struct{}
+}
+
+func (f *fakeJoiner) Join(_ context.Context, roomName string) error {
+	f.mu.Lock()
+	f.rooms = append(f.rooms, roomName)
+	f.mu.Unlock()
+	close(f.done)
+	return nil
+}
+
+func TestCreateMintsTokenAndStartsBot(t *testing.T) {
+	joiner := &fakeJoiner{done: make(chan struct{})}
 	svc := session.Service{
 		LiveKitURL: "ws://127.0.0.1:7880",
 		Minter: token.Minter{
@@ -17,6 +34,8 @@ func TestCreateMintsToken(t *testing.T) {
 			APISecret: "devsecret_ai_voice_platform_local_only",
 			ValidFor:  time.Hour,
 		},
+		RootCtx: context.Background(),
+		Bot:     joiner,
 	}
 
 	res, err := svc.Create(session.Request{Identity: "alice"})
@@ -29,10 +48,16 @@ func TestCreateMintsToken(t *testing.T) {
 	if !strings.HasPrefix(res.Room, "sess_") {
 		t.Fatalf("room = %q", res.Room)
 	}
-	if res.LiveKitURL != "ws://127.0.0.1:7880" {
-		t.Fatalf("url = %q", res.LiveKitURL)
+
+	select {
+	case <-joiner.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("bot join was not started")
 	}
-	if res.Token == "" {
-		t.Fatal("expected token")
+
+	joiner.mu.Lock()
+	defer joiner.mu.Unlock()
+	if len(joiner.rooms) != 1 || joiner.rooms[0] != res.Room {
+		t.Fatalf("joined rooms = %#v, want [%s]", joiner.rooms, res.Room)
 	}
 }

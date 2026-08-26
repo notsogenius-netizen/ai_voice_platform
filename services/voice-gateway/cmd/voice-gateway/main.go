@@ -12,6 +12,7 @@ import (
 
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/config"
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/httpserver"
+	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/roombot"
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/session"
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/token"
 )
@@ -28,13 +29,23 @@ func run() error {
 		return err
 	}
 
+	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	minter := token.Minter{
+		APIKey:    cfg.LiveKitAPIKey,
+		APISecret: cfg.LiveKitAPISecret,
+		ValidFor:  time.Hour,
+	}
+
 	deps := httpserver.Deps{
 		Sessions: session.Service{
 			LiveKitURL: cfg.LiveKitURL,
-			Minter: token.Minter{
-				APIKey:    cfg.LiveKitAPIKey,
-				APISecret: cfg.LiveKitAPISecret,
-				ValidFor:  time.Hour,
+			Minter:     minter,
+			RootCtx:    rootCtx,
+			Bot: roombot.Bot{
+				LiveKitURL: cfg.LiveKitURL,
+				Minter:     minter,
 			},
 		},
 	}
@@ -51,13 +62,10 @@ func run() error {
 		errCh <- srv.ListenAndServe()
 	}()
 
-	return waitForShutdown(srv, errCh)
+	return waitForShutdown(rootCtx, srv, errCh)
 }
 
-func waitForShutdown(srv *http.Server, errCh <-chan error) error {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
+func waitForShutdown(ctx context.Context, srv *http.Server, errCh <-chan error) error {
 	select {
 	case <-ctx.Done():
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
