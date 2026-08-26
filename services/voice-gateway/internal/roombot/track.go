@@ -139,7 +139,7 @@ func (b Bot) openSTTStream(
 	}
 
 	pipe := newSTTPipe(stream, label)
-	go readTranscripts(ctx, pipe)
+	go readTranscripts(ctx, pipe, b.Orchestrator)
 	log.Printf("roombot: stt stream opened %s", label)
 	return pipe
 }

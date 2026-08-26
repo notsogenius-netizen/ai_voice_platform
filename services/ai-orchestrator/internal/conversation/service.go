@@ -4,6 +4,7 @@ package conversation
 import (
 	"context"
 	"errors"
+	"log"
 	"strings"
 
 	"github.com/sourabh/ai-voice-platform/services/ai-orchestrator/internal/llm"
@@ -47,6 +48,8 @@ func (s *Service) HandleTurn(ctx context.Context, sessionID string, req TurnRequ
 		return nil, err
 	}
 
+	log.Printf("turn: received session=%s text=%q", sessionID, text)
+
 	messages := s.store.appendUser(sessionID, s.SystemPrompt, text)
 	upstream, err := s.LLM.Stream(ctx, messages)
 	if err != nil {
@@ -81,6 +84,7 @@ func (s *Service) forwardTurn(sessionID string, upstream <-chan llm.Chunk, out c
 	var assistant strings.Builder
 	for chunk := range upstream {
 		if chunk.Err != nil {
+			log.Printf("llm: stream failed session=%s: %v", sessionID, chunk.Err)
 			out <- chunk
 			return
 		}
@@ -91,7 +95,9 @@ func (s *Service) forwardTurn(sessionID string, upstream <-chan llm.Chunk, out c
 	}
 
 	if assistant.Len() > 0 {
-		s.store.appendAssistant(sessionID, assistant.String())
+		reply := assistant.String()
+		s.store.appendAssistant(sessionID, reply)
+		log.Printf("llm: reply session=%s text=%q", sessionID, reply)
 	}
 }
 

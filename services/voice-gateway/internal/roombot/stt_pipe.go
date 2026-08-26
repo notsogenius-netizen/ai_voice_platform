@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/orchestrator"
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/stt"
 )
 
@@ -63,7 +64,7 @@ func (p *sttPipe) closeQuietly() {
 	})
 }
 
-func readTranscripts(ctx context.Context, pipe *sttPipe) {
+func readTranscripts(ctx context.Context, pipe *sttPipe, orch orchestrator.Client) {
 	if pipe == nil {
 		return
 	}
@@ -78,6 +79,36 @@ func readTranscripts(ctx context.Context, pipe *sttPipe) {
 				return
 			}
 			logTranscript(tr)
+			if orch != nil && tr.IsFinal {
+				go forwardFinalTranscript(ctx, orch, tr)
+			}
 		}
 	}
+}
+
+func forwardFinalTranscript(ctx context.Context, orch orchestrator.Client, tr stt.Transcript) {
+	reply, err := orch.SendTurn(ctx, orchestrator.Turn{
+		SessionID: tr.Session.Room,
+		Text:      tr.Text,
+		IsFinal:   true,
+	})
+	if err != nil {
+		log.Printf(
+			"orchestrator: turn failed room=%s identity=%s track=%s: %v",
+			tr.Session.Room,
+			tr.Session.Participant,
+			tr.Session.TrackID,
+			err,
+		)
+		return
+	}
+	if reply.Ignored {
+		return
+	}
+	log.Printf(
+		"orchestrator: forwarded turn room=%s identity=%s track=%s",
+		tr.Session.Room,
+		tr.Session.Participant,
+		tr.Session.TrackID,
+	)
 }

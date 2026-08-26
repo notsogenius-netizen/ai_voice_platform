@@ -98,6 +98,22 @@ func TestLoadRejectsNonPositiveSTTSampleRate(t *testing.T) {
 	}
 }
 
+func TestLoadOrchestratorFromEnv(t *testing.T) {
+	setBaseEnv(t)
+	t.Setenv("AI_ORCHESTRATOR_URL", "http://127.0.0.1:8081")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.OrchestratorEnabled() {
+		t.Fatal("orchestrator should be enabled when AI_ORCHESTRATOR_URL is set")
+	}
+	if cfg.OrchestratorURL != "http://127.0.0.1:8081" {
+		t.Fatalf("OrchestratorURL = %q", cfg.OrchestratorURL)
+	}
+}
+
 func setBaseEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("VOICE_GATEWAY_ADDR", ":8080")

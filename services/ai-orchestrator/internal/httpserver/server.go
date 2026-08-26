@@ -50,6 +50,7 @@ func handleTurn(svc *conversation.Service) http.HandlerFunc {
 			return
 		}
 		if !req.IsFinal {
+			log.Printf("turn: ignored partial session=%s", r.PathValue("id"))
 			writeIgnoredPartial(w)
 			return
 		}
@@ -64,10 +65,11 @@ func handleFinalTurn(w http.ResponseWriter, r *http.Request, svc *conversation.S
 		IsFinal: req.IsFinal,
 	})
 	if err != nil {
+		log.Printf("turn: failed session=%s: %v", sessionID, err)
 		writeJSONError(w, turnErrorStatus(err), err.Error())
 		return
 	}
-	streamTurn(w, stream)
+	streamTurn(w, sessionID, stream)
 }
 
 func writeIgnoredPartial(w http.ResponseWriter) {
@@ -98,7 +100,7 @@ func decodeTurnRequest(w http.ResponseWriter, r *http.Request) (turnRequest, boo
 	return req, true
 }
 
-func streamTurn(w http.ResponseWriter, chunks <-chan llm.Chunk) {
+func streamTurn(w http.ResponseWriter, sessionID string, chunks <-chan llm.Chunk) {
 	flusher, ok := beginSSE(w)
 	if !ok {
 		return
@@ -106,6 +108,7 @@ func streamTurn(w http.ResponseWriter, chunks <-chan llm.Chunk) {
 
 	for chunk := range chunks {
 		if chunk.Err != nil {
+			log.Printf("turn: stream error session=%s: %v", sessionID, chunk.Err)
 			writeSSE(w, flusher, ssePayload{Error: chunk.Err.Error()})
 			return
 		}

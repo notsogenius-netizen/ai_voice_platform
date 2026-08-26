@@ -12,6 +12,8 @@ import (
 
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/config"
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/httpserver"
+	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/orchestrator"
+	orchhttp "github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/orchestrator/httpclient"
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/roombot"
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/session"
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/stt"
@@ -35,12 +37,18 @@ func run() error {
 	defer stop()
 
 	logSTTStatus(cfg)
+	logOrchestratorStatus(cfg)
+
 	sttClient, err := newSTTClient(cfg)
 	if err != nil {
 		return err
 	}
+	orchClient, err := newOrchestratorClient(cfg)
+	if err != nil {
+		return err
+	}
 
-	srv, errCh := startServer(cfg, rootCtx, sttClient)
+	srv, errCh := startServer(cfg, rootCtx, sttClient, orchClient)
 	return waitForShutdown(rootCtx, srv, errCh)
 }
 
@@ -68,8 +76,26 @@ func newSTTClient(cfg config.Config) (stt.Client, error) {
 	})
 }
 
-func startServer(cfg config.Config, rootCtx context.Context, sttClient stt.Client) (*http.Server, <-chan error) {
-	srv := newHTTPServer(cfg, rootCtx, sttClient)
+func logOrchestratorStatus(cfg config.Config) {
+	if cfg.OrchestratorEnabled() {
+		log.Printf("orchestrator: enabled url=%s", cfg.OrchestratorURL)
+		return
+	}
+	log.Printf("orchestrator: disabled (set AI_ORCHESTRATOR_URL to enable)")
+}
+
+func newOrchestratorClient(cfg config.Config) (orchestrator.Client, error) {
+	if !cfg.OrchestratorEnabled() {
+		return nil, nil
+	}
+	return orchhttp.NewClient(orchhttp.Config{
+		BaseURL:        cfg.OrchestratorURL,
+		RequestTimeout: 60 * time.Second,
+	})
+}
+
+func startServer(cfg config.Config, rootCtx context.Context, sttClient stt.Client, orchClient orchestrator.Client) (*http.Server, <-chan error) {
+	srv := newHTTPServer(cfg, rootCtx, sttClient, orchClient)
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -79,7 +105,7 @@ func startServer(cfg config.Config, rootCtx context.Context, sttClient stt.Clien
 	return srv, errCh
 }
 
-func newHTTPServer(cfg config.Config, rootCtx context.Context, sttClient stt.Client) *http.Server {
+func newHTTPServer(cfg config.Config, rootCtx context.Context, sttClient stt.Client, orchClient orchestrator.Client) *http.Server {
 	minter := token.Minter{
 		APIKey:    cfg.LiveKitAPIKey,
 		APISecret: cfg.LiveKitAPISecret,
@@ -92,10 +118,11 @@ func newHTTPServer(cfg config.Config, rootCtx context.Context, sttClient stt.Cli
 			Minter:     minter,
 			RootCtx:    rootCtx,
 			Bot: roombot.Bot{
-				LiveKitURL:    cfg.LiveKitURL,
-				Minter:        minter,
-				STTSampleRate: cfg.STTSampleRate,
-				STT:           sttClient,
+				LiveKitURL:     cfg.LiveKitURL,
+				Minter:         minter,
+				STTSampleRate:  cfg.STTSampleRate,
+				STT:            sttClient,
+				Orchestrator:   orchClient,
 			},
 		},
 	}
