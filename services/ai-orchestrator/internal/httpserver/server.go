@@ -45,31 +45,36 @@ func handleTurn(svc *conversation.Service) http.HandlerFunc {
 			return
 		}
 
-		sessionID := r.PathValue("id")
 		req, ok := decodeTurnRequest(w, r)
 		if !ok {
 			return
 		}
-
 		if !req.IsFinal {
-			writeJSON(w, http.StatusAccepted, map[string]string{
-				"status": "ignored",
-				"reason": "partial transcript",
-			})
+			writeIgnoredPartial(w)
 			return
 		}
 
-		stream, err := svc.HandleTurn(r.Context(), sessionID, conversation.TurnRequest{
-			Text:    req.Text,
-			IsFinal: req.IsFinal,
-		})
-		if err != nil {
-			writeJSONError(w, turnErrorStatus(err), err.Error())
-			return
-		}
-
-		streamTurn(w, stream)
+		handleFinalTurn(w, r, svc, r.PathValue("id"), req)
 	}
+}
+
+func handleFinalTurn(w http.ResponseWriter, r *http.Request, svc *conversation.Service, sessionID string, req turnRequest) {
+	stream, err := svc.HandleTurn(r.Context(), sessionID, conversation.TurnRequest{
+		Text:    req.Text,
+		IsFinal: req.IsFinal,
+	})
+	if err != nil {
+		writeJSONError(w, turnErrorStatus(err), err.Error())
+		return
+	}
+	streamTurn(w, stream)
+}
+
+func writeIgnoredPartial(w http.ResponseWriter) {
+	writeJSON(w, http.StatusAccepted, map[string]string{
+		"status": "ignored",
+		"reason": "partial transcript",
+	})
 }
 
 func turnErrorStatus(err error) int {
@@ -94,16 +99,10 @@ func decodeTurnRequest(w http.ResponseWriter, r *http.Request) (turnRequest, boo
 }
 
 func streamTurn(w http.ResponseWriter, chunks <-chan llm.Chunk) {
-	flusher, ok := w.(http.Flusher)
+	flusher, ok := beginSSE(w)
 	if !ok {
-		writeJSONError(w, http.StatusInternalServerError, "streaming not supported")
 		return
 	}
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.WriteHeader(http.StatusOK)
 
 	for chunk := range chunks {
 		if chunk.Err != nil {
@@ -116,6 +115,19 @@ func streamTurn(w http.ResponseWriter, chunks <-chan llm.Chunk) {
 		writeSSE(w, flusher, ssePayload{Text: chunk.Text})
 	}
 	writeSSEDone(w, flusher)
+}
+
+func beginSSE(w http.ResponseWriter) (http.Flusher, bool) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeJSONError(w, http.StatusInternalServerError, "streaming not supported")
+		return nil, false
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+	return flusher, true
 }
 
 type ssePayload struct {

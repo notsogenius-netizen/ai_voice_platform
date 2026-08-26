@@ -9,6 +9,8 @@ import (
 	"github.com/sourabh/ai-voice-platform/services/ai-orchestrator/internal/llm"
 )
 
+var errPartialTranscript = errors.New("partial transcript")
+
 // TurnRequest is one transcript event from the voice gateway.
 type TurnRequest struct {
 	Text    string
@@ -37,18 +39,12 @@ func NewService(client llm.Client, systemPrompt string) *Service {
 // HandleTurn processes a transcript. Partial transcripts are ignored.
 // Final transcripts append user input, stream an assistant reply, and persist it.
 func (s *Service) HandleTurn(ctx context.Context, sessionID string, req TurnRequest) (<-chan llm.Chunk, error) {
-	if s.LLM == nil {
-		return nil, errors.New("llm not configured")
-	}
-	if strings.TrimSpace(sessionID) == "" {
-		return nil, errors.New("session id is required")
-	}
-	if !req.IsFinal {
-		return nil, nil
-	}
-	text := strings.TrimSpace(req.Text)
-	if text == "" {
-		return nil, errors.New("text is required for final transcripts")
+	text, err := s.prepareFinalTurn(sessionID, req)
+	if err != nil {
+		if errors.Is(err, errPartialTranscript) {
+			return nil, nil
+		}
+		return nil, err
 	}
 
 	messages := s.store.appendUser(sessionID, s.SystemPrompt, text)
@@ -60,6 +56,23 @@ func (s *Service) HandleTurn(ctx context.Context, sessionID string, req TurnRequ
 	out := make(chan llm.Chunk, 16)
 	go s.forwardTurn(sessionID, upstream, out)
 	return out, nil
+}
+
+func (s *Service) prepareFinalTurn(sessionID string, req TurnRequest) (string, error) {
+	if s.LLM == nil {
+		return "", errors.New("llm not configured")
+	}
+	if strings.TrimSpace(sessionID) == "" {
+		return "", errors.New("session id is required")
+	}
+	if !req.IsFinal {
+		return "", errPartialTranscript
+	}
+	text := strings.TrimSpace(req.Text)
+	if text == "" {
+		return "", errors.New("text is required for final transcripts")
+	}
+	return text, nil
 }
 
 func (s *Service) forwardTurn(sessionID string, upstream <-chan llm.Chunk, out chan<- llm.Chunk) {
