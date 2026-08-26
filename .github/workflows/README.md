@@ -4,6 +4,7 @@
 
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
+| [`branch-name.yml`](branch-name.yml) | `push` (branches) | Enforce branch naming convention (`feature/…`, `bugfix/…`, etc.) |
 | [`pr-quality.yml`](pr-quality.yml) | `pull_request` | Custom Go AST quality gate (`make quality-report`) |
 
 The quality workflow checks out full history, compares against `origin/<base_ref>`, uploads JSON/SARIF artifacts, writes a PR job summary, and uploads SARIF to code scanning when permitted.

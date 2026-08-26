@@ -44,6 +44,9 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 
+# Private working plan (local progress tracker; not for Git)
+PROJECT_PLAN.md
+
 # Misc
 tmp/
 *.log

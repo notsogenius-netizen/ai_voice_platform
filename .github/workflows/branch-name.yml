@@ -1,0 +1,52 @@
+name: Branch Name
+
+on:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate branch name
+    runs-on: ubuntu-latest
+    # Tag pushes also trigger `on: push`; skip them — this check is for branches only.
+    if: github.ref_type == 'branch'
+    steps:
+      - name: Check branch naming convention
+        env:
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          pattern='^(feature|bugfix|hotfix|refactor|chore|docs|test)/[a-z0-9]+([._-][a-z0-9]+)*$'
+
+          echo "Pushed branch: ${BRANCH_NAME}"
+
+          if [[ "${BRANCH_NAME}" =~ ${pattern} ]]; then
+            echo "Branch name matches the required convention."
+            exit 0
+          fi
+
+          {
+            echo "::error::Invalid branch name '${BRANCH_NAME}'."
+            echo ""
+            echo "Expected branch naming convention:"
+            echo "  feature/<description>"
+            echo "  bugfix/<description>"
+            echo "  hotfix/<description>"
+            echo "  refactor/<description>"
+            echo "  chore/<description>"
+            echo "  docs/<description>"
+            echo "  test/<description>"
+            echo ""
+            echo "Rules for <description>:"
+            echo "  - lowercase letters and numbers only"
+            echo "  - separators allowed: - _ ."
+            echo "  - no spaces"
+            echo "  - must not be empty"
+            echo ""
+            echo "Example: feature/browser-call"
+            echo "Regex: ${pattern}"
+          } >&2
+          exit 1
