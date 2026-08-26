@@ -23,6 +23,7 @@ type Config struct {
 	DeepgramAPIKey     string
 	DeepgramListenURL  string
 	STTSampleRate      int
+	OrchestratorURL    string
 }
 
 // Load reads configuration from environment variables.
@@ -41,6 +42,7 @@ func Load() (Config, error) {
 		DeepgramAPIKey:    strings.TrimSpace(os.Getenv("DEEPGRAM_API_KEY")),
 		DeepgramListenURL: envOr("DEEPGRAM_LISTEN_URL", defaultDeepgramListenURL),
 		STTSampleRate:     sampleRate,
+		OrchestratorURL:   strings.TrimSpace(os.Getenv("AI_ORCHESTRATOR_URL")),
 	}
 	if err := cfg.validate(); err != nil {
 		return Config{}, err
@@ -51,6 +53,11 @@ func Load() (Config, error) {
 // STTEnabled reports whether streaming STT is configured.
 func (c Config) STTEnabled() bool {
 	return c.DeepgramAPIKey != ""
+}
+
+// OrchestratorEnabled reports whether transcript forwarding is configured.
+func (c Config) OrchestratorEnabled() bool {
+	return c.OrchestratorURL != ""
 }
 
 func (c Config) validate() error {

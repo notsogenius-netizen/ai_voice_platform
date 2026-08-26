@@ -11,16 +11,18 @@ import (
 	lksdk "github.com/livekit/server-sdk-go/v2"
 	"github.com/pion/webrtc/v4"
 
+	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/orchestrator"
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/stt"
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/token"
 )
 
 // Bot connects to LiveKit rooms and observes remote audio tracks.
 type Bot struct {
-	LiveKitURL    string
-	Minter        token.Minter
-	STTSampleRate int
-	STT           stt.Client
+	LiveKitURL     string
+	Minter         token.Minter
+	STTSampleRate  int
+	STT            stt.Client
+	Orchestrator   orchestrator.Client
 }
 
 // Join connects as voice-gateway, logs participants/tracks, and blocks until ctx ends.
