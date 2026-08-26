@@ -11,7 +11,8 @@ jobs:
     name: Validate branch name
     runs-on: ubuntu-latest
     # Tag pushes also trigger `on: push`; skip them — this check is for branches only.
-    if: github.ref_type == 'branch'
+    # Default branches are exempt: merges/pushes to main must not fail this naming check.
+    if: github.ref_type == 'branch' && github.ref_name != 'main' && github.ref_name != 'master'
     steps:
       - name: Check branch naming convention
         env:
@@ -46,6 +47,7 @@ jobs:
             echo "  - no spaces"
             echo "  - must not be empty"
             echo ""
+            echo "Default branches (main, master) are exempt."
             echo "Example: feature/browser-call"
             echo "Regex: ${pattern}"
           } >&2
