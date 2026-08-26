@@ -34,4 +34,4 @@
 
 - Browser clients obtain `{ room, livekit_url, token }` from `POST /v1/sessions`.
 - `voice-gateway` never exposes `LIVEKIT_API_SECRET` to the browser.
-- Phase 1 verification publishes a short tone from the gateway; AI/STT/TTS arrive in later phases.
+- Phase 1 verification publishes a short tone from the gateway; STT added in Phase 2 (ADR 007).

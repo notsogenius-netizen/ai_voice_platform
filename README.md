@@ -4,7 +4,7 @@ Multi-tenant AI Voice Support Platform for real-time conversational support acro
 
 Organizations will eventually configure AI voice agents that converse with users, retrieve organization-specific knowledge, invoke backend tools, and escalate to human agents.
 
-> **Status:** Phase 1 media path is runnable locally (LiveKit + `voice-gateway` + browser prototype). AI pipeline and later infrastructure are not implemented yet.
+> **Status:** Phase 1–2 runnable locally (LiveKit + `voice-gateway` + browser prototype + optional Deepgram STT). AI orchestrator, TTS, and later infrastructure are not implemented yet.
 
 ---
 
@@ -17,8 +17,9 @@ This repository currently contains:
 - Makefile targets for tests, quality gate, LiveKit, voice-gateway, and the browser prototype
 - Architecture overview and Architecture Decision Records (ADRs), including LiveKit (ADR 006)
 - **Phase 1:** local LiveKit (Docker), `voice-gateway` session tokens + room bot + verification tone, `apps/voice-prototype` browser client
+- **Phase 2:** streaming STT — Opus→PCM in gateway, Deepgram WebSocket, partial/final transcript logs ([docs](docs/architecture/stt-phase2.md), [ADR 007](docs/architecture/adr/007-deepgram-stt-in-voice-gateway.md))
 
-AI/STT/TTS, Kafka, Redis, PostgreSQL runtime, Kubernetes, and cloud deploy are still ahead.
+LLM/TTS, Kafka, Redis, PostgreSQL runtime, Kubernetes, and cloud deploy are still ahead.
 
 ## Planned architecture (not implemented)
 
@@ -75,6 +76,7 @@ Only `call-service` has a `migrations/` directory today, as the first service ex
 | Language | Go, idiomatic modules | voice-gateway implemented; others stubs |
 | Build | Conventional Go modules + Makefile | Active |
 | Realtime media | LiveKit (browser WebRTC) | Phase 1 local Docker + gateway |
+| STT | Deepgram (streaming, gateway) | Phase 2 (optional via env) |
 | Containers | Docker / OCI; Docker Hub as initial registry | LiveKit Compose only so far |
 | Orchestration | Kubernetes + Helm (planned) | Directories only |
 | IaC | Terraform, cloud-agnostic layout | Directories only |
@@ -84,7 +86,8 @@ Only `call-service` has a `migrations/` directory today, as the first service ex
 
 Build system choice: [ADR 002](docs/architecture/adr/002-go-modules.md).  
 Container tooling: [ADR 005](docs/architecture/adr/005-docker-vs-podman.md).  
-LiveKit / tokens: [ADR 006](docs/architecture/adr/006-livekit-media-and-tokens.md).
+LiveKit / tokens: [ADR 006](docs/architecture/adr/006-livekit-media-and-tokens.md).  
+Phase 2 STT: [ADR 007](docs/architecture/adr/007-deepgram-stt-in-voice-gateway.md).
 
 ## Deployment direction (planned)
 
@@ -111,13 +114,19 @@ README.md
 
 ## Local development
 
-Implementation will proceed incrementally. At this stage there is nothing to run beyond verifying the skeleton:
+Phase 1–2 local stack:
 
 ```bash
-make help
-make tidy
-make test   # no packages yet; will succeed as a no-op loop
-make build  # no packages yet
+make livekit-up
+make run-voice-gateway   # loads .env; set DEEPGRAM_API_KEY for STT
+make run-voice-prototype   # http://127.0.0.1:5173
+```
+
+Verification: [livekit-local.md](docs/architecture/livekit-local.md), [stt-phase2.md](docs/architecture/stt-phase2.md).
+
+```bash
+make test    # all service modules
+make quality # custom quality gate
 ```
 
 ## Engineering principles

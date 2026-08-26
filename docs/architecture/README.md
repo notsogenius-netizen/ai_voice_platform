@@ -2,7 +2,8 @@
 
 High-level architecture for the AI Voice Support Platform.
 
-> **Phase 1 media path is implemented:** browser ↔ LiveKit ↔ `voice-gateway` (session tokens, room bot, verification tone). AI/STT/TTS and later services remain planned.
+> **Phase 1 media path is implemented:** browser ↔ LiveKit ↔ `voice-gateway` (session tokens, room bot, verification tone).  
+> **Phase 2 STT is implemented:** gateway decodes browser audio and streams transcripts from Deepgram (logs only). AI orchestrator, TTS, and later services remain planned.
 
 ---
 
@@ -26,10 +27,12 @@ Browser (apps/voice-prototype)
 LiveKit (local Docker)
   │
   ▼
-Voice Gateway  ← Phase 1 (tokens, subscribe, verification tone)
+Voice Gateway  ← Phase 1–2 (tokens, subscribe, tone, STT)
+  │
+  ├── Deepgram STT (Phase 2, when configured)
   │
   ▼
-AI Orchestrator  ← later phases
+AI Orchestrator  ← Phase 3+
   │
   ├── Speech-to-Text
   ├── LLM
@@ -55,7 +58,7 @@ Supporting capabilities planned around this core:
 | Service | Responsibility | Owns data? | Status |
 |---------|----------------|------------|--------|
 | **api-gateway** | External API surface, request routing, future auth/tenancy boundary | No (stateless edge) | Skeleton |
-| **voice-gateway** | Media-plane adapter: LiveKit sessions ↔ orchestration signals | No (real-time bridge) | Phase 1 runtime |
+| **voice-gateway** | Media-plane adapter: LiveKit sessions, PCM decode, STT, future orchestration signals | No (real-time bridge) | Phase 1–2 runtime |
 | **ai-orchestrator** | Conversation control plane: STT/LLM/TTS/RAG/tools/escalation orchestration | TBD when durable agent/session state is defined | Skeleton |
 | **call-service** | Call records, lifecycle state, call-domain queries | Yes — owns schema + migrations | Skeleton |
 
@@ -118,15 +121,15 @@ Intended CI shape:
 - Change under `pkg/**` → rebuild/test services that depend on the changed package
 - Migration changes under a service → treated as a change to that service
 
-Cloud provider is intentionally unlocked; Terraform will isolate provider-specific modules when deployment starts (ADR 004). Docker is the primary container toolchain (ADR 005). LiveKit + Phase-1 token ownership: ADR 006.
-
-## Incremental delivery
-
-Implementation proceeds layer by layer. Each step should verify boundaries and ownership before adding the next technology. Prefer production-realistic simplicity over resume-driven complexity.
+Cloud provider is intentionally unlocked; Terraform will isolate provider-specific modules when deployment starts (ADR 004). Docker is the primary container toolchain (ADR 005). LiveKit + Phase-1 token ownership: ADR 006. Phase-2 STT: ADR 007.
 
 ## Local LiveKit
 
 Phase 1 local SFU setup: [livekit-local.md](livekit-local.md).
+
+## Phase 2 STT
+
+Streaming speech-to-text verification: [stt-phase2.md](stt-phase2.md).
 
 ## ADRs
 
