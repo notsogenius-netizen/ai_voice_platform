@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Voice Prototype</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Voice Prototype</h1>
+      <p class="lede">Phase 1 / F4 — connect to LiveKit and publish microphone audio.</p>
+
+      <div class="actions">
+        <button id="connectBtn" type="button">Connect + publish mic</button>
+        <button id="disconnectBtn" type="button" disabled>Disconnect</button>
+      </div>
+
+      <dl class="status">
+        <div>
+          <dt>Connection</dt>
+          <dd id="connectionState">idle</dd>
+        </div>
+        <div>
+          <dt>Room</dt>
+          <dd id="roomName">—</dd>
+        </div>
+        <div>
+          <dt>Identity</dt>
+          <dd id="identity">—</dd>
+        </div>
+        <div>
+          <dt>Local mic</dt>
+          <dd id="micState">not published</dd>
+        </div>
+        <div>
+          <dt>Participants</dt>
+          <dd id="participants">—</dd>
+        </div>
+      </dl>
+
+      <pre id="log" aria-live="polite"></pre>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
