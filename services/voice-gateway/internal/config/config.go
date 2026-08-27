@@ -10,30 +10,41 @@ import (
 
 const (
 	defaultDeepgramListenURL = "wss://api.deepgram.com/v1/listen"
+	defaultDeepgramSpeakURL  = "https://api.deepgram.com/v1/speak"
 	defaultSTTSampleRate     = 16000
+	defaultTTSModel          = "aura-2-thalia-en"
 )
 
 // Config holds runtime settings for the voice-gateway process.
 type Config struct {
-	Addr               string
-	CORSOrigin         string
-	LiveKitURL         string
-	LiveKitAPIKey      string
-	LiveKitAPISecret   string
-	DeepgramAPIKey     string
-	DeepgramListenURL  string
-	STTSampleRate      int
-	OrchestratorURL    string
+	Addr              string
+	CORSOrigin        string
+	LiveKitURL        string
+	LiveKitAPIKey     string
+	LiveKitAPISecret  string
+	DeepgramAPIKey    string
+	DeepgramListenURL string
+	STTSampleRate     int
+	DeepgramSpeakURL  string
+	TTSModel          string
+	OrchestratorURL   string
 }
 
 // Load reads configuration from environment variables.
 func Load() (Config, error) {
-	sampleRate, err := envIntOr("STT_SAMPLE_RATE", defaultSTTSampleRate)
+	sttSampleRate, err := envIntOr("STT_SAMPLE_RATE", defaultSTTSampleRate)
 	if err != nil {
 		return Config{}, fmt.Errorf("STT_SAMPLE_RATE: %w", err)
 	}
+	cfg := loadFromEnv(sttSampleRate)
+	if err := cfg.validate(); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
 
-	cfg := Config{
+func loadFromEnv(sttSampleRate int) Config {
+	return Config{
 		Addr:              envOr("VOICE_GATEWAY_ADDR", ":8080"),
 		CORSOrigin:        envOr("VOICE_GATEWAY_CORS_ORIGIN", "http://127.0.0.1:5173"),
 		LiveKitURL:        envOr("LIVEKIT_URL", "ws://127.0.0.1:7880"),
@@ -41,17 +52,20 @@ func Load() (Config, error) {
 		LiveKitAPISecret:  envOr("LIVEKIT_API_SECRET", ""),
 		DeepgramAPIKey:    strings.TrimSpace(os.Getenv("DEEPGRAM_API_KEY")),
 		DeepgramListenURL: envOr("DEEPGRAM_LISTEN_URL", defaultDeepgramListenURL),
-		STTSampleRate:     sampleRate,
+		STTSampleRate:     sttSampleRate,
+		DeepgramSpeakURL:  envOr("DEEPGRAM_SPEAK_URL", defaultDeepgramSpeakURL),
+		TTSModel:          envOr("TTS_MODEL", defaultTTSModel),
 		OrchestratorURL:   strings.TrimSpace(os.Getenv("AI_ORCHESTRATOR_URL")),
 	}
-	if err := cfg.validate(); err != nil {
-		return Config{}, err
-	}
-	return cfg, nil
 }
 
 // STTEnabled reports whether streaming STT is configured.
 func (c Config) STTEnabled() bool {
+	return c.DeepgramAPIKey != ""
+}
+
+// TTSEnabled reports whether text-to-speech is configured.
+func (c Config) TTSEnabled() bool {
 	return c.DeepgramAPIKey != ""
 }
 
@@ -61,7 +75,7 @@ func (c Config) OrchestratorEnabled() bool {
 }
 
 func (c Config) validate() error {
-	checks := []struct {
+	required := []struct {
 		name  string
 		value string
 	}{
@@ -70,14 +84,14 @@ func (c Config) validate() error {
 		{"LIVEKIT_URL", c.LiveKitURL},
 		{"LIVEKIT_API_KEY", c.LiveKitAPIKey},
 		{"LIVEKIT_API_SECRET", c.LiveKitAPISecret},
+		{"DEEPGRAM_LISTEN_URL", c.DeepgramListenURL},
+		{"DEEPGRAM_SPEAK_URL", c.DeepgramSpeakURL},
+		{"TTS_MODEL", c.TTSModel},
 	}
-	for _, check := range checks {
+	for _, check := range required {
 		if strings.TrimSpace(check.value) == "" {
 			return fmt.Errorf("%s must not be empty", check.name)
 		}
-	}
-	if strings.TrimSpace(c.DeepgramListenURL) == "" {
-		return fmt.Errorf("DEEPGRAM_LISTEN_URL must not be empty")
 	}
 	if c.STTSampleRate <= 0 {
 		return fmt.Errorf("STT_SAMPLE_RATE must be positive")

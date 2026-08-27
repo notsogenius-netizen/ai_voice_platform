@@ -48,19 +48,40 @@ func NewClient(cfg Config) (*Client, error) {
 	return &Client{cfg: cfg, postFn: httpClient.Do}, nil
 }
 
-// SendTurn forwards one transcript turn to ai-orchestrator.
+// SendTurn forwards one transcript turn and returns the full reply text.
 func (c *Client) SendTurn(ctx context.Context, turn orchestrator.Turn) (orchestrator.Reply, error) {
-	body, err := json.Marshal(turnRequest{
-		Text:    turn.Text,
-		IsFinal: turn.IsFinal,
-	})
-	if err != nil {
-		return orchestrator.Reply{}, fmt.Errorf("orchestrator encode request: %w", err)
-	}
+	return c.StreamTurn(ctx, turn, nil)
+}
 
-	reqCtx, cancel := context.WithTimeout(ctx, c.cfg.RequestTimeout)
+// StreamTurn forwards one turn and invokes onChunk for each SSE text fragment.
+func (c *Client) StreamTurn(
+	ctx context.Context,
+	turn orchestrator.Turn,
+	onChunk orchestrator.ChunkHandler,
+) (orchestrator.Reply, error) {
+	req, cancel, err := c.buildTurnRequest(ctx, turn)
+	if err != nil {
+		return orchestrator.Reply{}, err
+	}
 	defer cancel()
 
+	resp, err := c.postFn(req)
+	if err != nil {
+		return orchestrator.Reply{}, fmt.Errorf("orchestrator request: %w", err)
+	}
+	defer resp.Body.Close()
+	return c.readResponse(resp, onChunk)
+}
+
+func (c *Client) buildTurnRequest(
+	ctx context.Context,
+	turn orchestrator.Turn,
+) (*http.Request, context.CancelFunc, error) {
+	body, err := json.Marshal(turnRequest{Text: turn.Text, IsFinal: turn.IsFinal})
+	if err != nil {
+		return nil, nil, fmt.Errorf("orchestrator encode request: %w", err)
+	}
+	reqCtx, cancel := context.WithTimeout(ctx, c.cfg.RequestTimeout)
 	req, err := http.NewRequestWithContext(
 		reqCtx,
 		http.MethodPost,
@@ -68,39 +89,37 @@ func (c *Client) SendTurn(ctx context.Context, turn orchestrator.Turn) (orchestr
 		bytes.NewReader(body),
 	)
 	if err != nil {
-		return orchestrator.Reply{}, fmt.Errorf("orchestrator build request: %w", err)
+		cancel()
+		return nil, nil, fmt.Errorf("orchestrator build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream, application/json")
-
-	resp, err := c.postFn(req)
-	if err != nil {
-		return orchestrator.Reply{}, fmt.Errorf("orchestrator request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	return c.readResponse(resp)
+	return req, cancel, nil
 }
 
-func (c *Client) readResponse(resp *http.Response) (orchestrator.Reply, error) {
+func (c *Client) readResponse(
+	resp *http.Response,
+	onChunk orchestrator.ChunkHandler,
+) (orchestrator.Reply, error) {
 	if resp.StatusCode == http.StatusAccepted {
 		return orchestrator.Reply{Ignored: true}, nil
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		msg := readErrorBody(resp.Body)
-		return orchestrator.Reply{}, fmt.Errorf("orchestrator status %d: %s", resp.StatusCode, msg)
+		return orchestrator.Reply{}, fmt.Errorf("orchestrator status %d: %s", resp.StatusCode, readErrorBody(resp.Body))
 	}
-
 	if strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream") {
-		text, err := readSSEText(resp.Body)
+		text, err := readSSEText(resp.Body, onChunk)
 		if err != nil {
 			return orchestrator.Reply{}, err
 		}
 		return orchestrator.Reply{Text: text}, nil
 	}
+	return readIgnoredJSON(resp.Body)
+}
 
+func readIgnoredJSON(body io.Reader) (orchestrator.Reply, error) {
 	var ignored ignoredResponse
-	if err := json.NewDecoder(resp.Body).Decode(&ignored); err == nil && ignored.Status == "ignored" {
+	if err := json.NewDecoder(body).Decode(&ignored); err == nil && ignored.Status == "ignored" {
 		return orchestrator.Reply{Ignored: true}, nil
 	}
 	return orchestrator.Reply{}, nil
@@ -118,30 +137,44 @@ func readErrorBody(r io.Reader) string {
 	return strings.TrimSpace(string(b))
 }
 
-func readSSEText(body io.Reader) (string, error) {
+func readSSEText(body io.Reader, onChunk orchestrator.ChunkHandler) (string, error) {
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-
 	var reply strings.Builder
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if !strings.HasPrefix(line, "data:") {
-			continue
+		done, err := appendSSELine(&reply, scanner.Text(), onChunk)
+		if err != nil || done {
+			return reply.String(), err
 		}
-		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-		if payload == "[DONE]" {
-			break
-		}
-		text, err := parseSSEPayload(payload)
-		if err != nil {
-			return "", err
-		}
-		reply.WriteString(text)
 	}
 	if err := scanner.Err(); err != nil {
 		return "", fmt.Errorf("orchestrator read stream: %w", err)
 	}
 	return reply.String(), nil
+}
+
+func appendSSELine(
+	reply *strings.Builder,
+	raw string,
+	onChunk orchestrator.ChunkHandler,
+) (done bool, err error) {
+	line := strings.TrimSpace(raw)
+	if !strings.HasPrefix(line, "data:") {
+		return false, nil
+	}
+	payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+	if payload == "[DONE]" {
+		return true, nil
+	}
+	text, err := parseSSEPayload(payload)
+	if err != nil || text == "" {
+		return false, err
+	}
+	reply.WriteString(text)
+	if onChunk == nil {
+		return false, nil
+	}
+	return false, onChunk(text)
 }
 
 func parseSSEPayload(payload string) (string, error) {

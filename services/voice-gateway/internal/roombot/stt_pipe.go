@@ -4,11 +4,15 @@ import (
 	"context"
 	"errors"
 	"log"
+	"strings"
 	"sync"
 	"sync/atomic"
 
+	lksdk "github.com/livekit/server-sdk-go/v2"
+
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/orchestrator"
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/stt"
+	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/tts"
 )
 
 type sttPipe struct {
@@ -16,6 +20,15 @@ type sttPipe struct {
 	label  string
 	dead   atomic.Bool
 	once   sync.Once
+}
+
+// turnPipeline forwards finals to the orchestrator and speaks replies.
+type turnPipeline struct {
+	orch     orchestrator.Client
+	tts      tts.Client
+	room     func() *lksdk.Room
+	playback *replyPlayback
+	turnMu   *sync.Mutex
 }
 
 func newSTTPipe(stream stt.Stream, label string) *sttPipe {
@@ -64,11 +77,10 @@ func (p *sttPipe) closeQuietly() {
 	})
 }
 
-func readTranscripts(ctx context.Context, pipe *sttPipe, orch orchestrator.Client) {
+func readTranscripts(ctx context.Context, pipe *sttPipe, pipeline *turnPipeline) {
 	if pipe == nil {
 		return
 	}
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -78,37 +90,40 @@ func readTranscripts(ctx context.Context, pipe *sttPipe, orch orchestrator.Clien
 				pipe.end(errors.New("transcript channel closed"))
 				return
 			}
-			logTranscript(tr)
-			if orch != nil && tr.IsFinal {
-				go forwardFinalTranscript(ctx, orch, tr)
-			}
+			dispatchTranscript(ctx, pipeline, tr)
 		}
 	}
 }
 
-func forwardFinalTranscript(ctx context.Context, orch orchestrator.Client, tr stt.Transcript) {
-	reply, err := orch.SendTurn(ctx, orchestrator.Turn{
-		SessionID: tr.Session.Room,
-		Text:      tr.Text,
-		IsFinal:   true,
-	})
-	if err != nil {
-		log.Printf(
-			"orchestrator: turn failed room=%s identity=%s track=%s: %v",
-			tr.Session.Room,
-			tr.Session.Participant,
-			tr.Session.TrackID,
-			err,
-		)
+func dispatchTranscript(ctx context.Context, pipeline *turnPipeline, tr stt.Transcript) {
+	logTranscript(tr)
+	if pipeline == nil {
 		return
 	}
-	if reply.Ignored {
+	maybeBargeIn(pipeline, tr)
+	if pipeline.orch != nil && tr.IsFinal {
+		go pipeline.handleFinal(ctx, tr)
+	}
+}
+
+func maybeBargeIn(pipeline *turnPipeline, tr stt.Transcript) {
+	if pipeline.playback == nil || !pipeline.playback.Playing() {
+		return
+	}
+	if strings.TrimSpace(tr.Text) == "" {
 		return
 	}
 	log.Printf(
-		"orchestrator: forwarded turn room=%s identity=%s track=%s",
+		"roombot: barge-in room=%s identity=%s track=%s",
 		tr.Session.Room,
 		tr.Session.Participant,
 		tr.Session.TrackID,
 	)
+	pipeline.playback.Interrupt()
+}
+
+// forwardFinalTranscript is retained for focused unit tests of orchestrator forwarding.
+func forwardFinalTranscript(ctx context.Context, orch orchestrator.Client, tr stt.Transcript) {
+	pipeline := &turnPipeline{orch: orch}
+	pipeline.handleFinal(ctx, tr)
 }

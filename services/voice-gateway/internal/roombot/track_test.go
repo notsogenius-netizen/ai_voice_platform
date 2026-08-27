@@ -65,14 +65,14 @@ func TestLogTranscriptFinal(t *testing.T) {
 
 func TestOpenSTTStreamWithoutClient(t *testing.T) {
 	b := Bot{}
-	if pipe := b.openSTTStream(t.Context(), stt.Session{}, "label"); pipe != nil {
+	if pipe := b.openSTTStream(t.Context(), stt.Session{}, "label", nil); pipe != nil {
 		t.Fatal("expected nil pipe without STT client")
 	}
 }
 
 func TestOpenSTTStreamOpenFailure(t *testing.T) {
 	b := Bot{STT: failingSTTClient{}}
-	if pipe := b.openSTTStream(t.Context(), stt.Session{}, "label"); pipe != nil {
+	if pipe := b.openSTTStream(t.Context(), stt.Session{}, "label", nil); pipe != nil {
 		t.Fatal("expected nil pipe when STT open fails")
 	}
 }
@@ -82,7 +82,7 @@ func TestOpenSTTStreamWithFakeClient(t *testing.T) {
 	b := Bot{STT: &fakeSTTClient{opened: opened}}
 
 	sess := stt.Session{Room: "room-1", Participant: "browser-1", TrackID: "TR_1"}
-	pipe := b.openSTTStream(t.Context(), sess, "label")
+	pipe := b.openSTTStream(t.Context(), sess, "label", nil)
 	if pipe == nil {
 		t.Fatal("expected STT pipe")
 	}

@@ -48,11 +48,20 @@ func TestLoadWithoutSTT(t *testing.T) {
 	if cfg.STTEnabled() {
 		t.Fatal("STT should be disabled without DEEPGRAM_API_KEY")
 	}
+	if cfg.TTSEnabled() {
+		t.Fatal("TTS should be disabled without DEEPGRAM_API_KEY")
+	}
 	if cfg.STTSampleRate != 16000 {
 		t.Fatalf("STTSampleRate = %d, want 16000", cfg.STTSampleRate)
 	}
 	if cfg.DeepgramListenURL != "wss://api.deepgram.com/v1/listen" {
 		t.Fatalf("DeepgramListenURL = %q", cfg.DeepgramListenURL)
+	}
+	if cfg.DeepgramSpeakURL != "https://api.deepgram.com/v1/speak" {
+		t.Fatalf("DeepgramSpeakURL = %q", cfg.DeepgramSpeakURL)
+	}
+	if cfg.TTSModel != "aura-2-thalia-en" {
+		t.Fatalf("TTSModel = %q", cfg.TTSModel)
 	}
 }
 
@@ -61,6 +70,8 @@ func TestLoadSTTFromEnv(t *testing.T) {
 	t.Setenv("DEEPGRAM_API_KEY", "dg-test-key")
 	t.Setenv("DEEPGRAM_LISTEN_URL", "wss://example.test/listen")
 	t.Setenv("STT_SAMPLE_RATE", "48000")
+	t.Setenv("DEEPGRAM_SPEAK_URL", "https://example.test/speak")
+	t.Setenv("TTS_MODEL", "aura-2-andromeda-en")
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -68,6 +79,9 @@ func TestLoadSTTFromEnv(t *testing.T) {
 	}
 	if !cfg.STTEnabled() {
 		t.Fatal("STT should be enabled when DEEPGRAM_API_KEY is set")
+	}
+	if !cfg.TTSEnabled() {
+		t.Fatal("TTS should be enabled when DEEPGRAM_API_KEY is set")
 	}
 	if cfg.DeepgramAPIKey != "dg-test-key" {
 		t.Fatalf("DeepgramAPIKey = %q", cfg.DeepgramAPIKey)
@@ -77,6 +91,12 @@ func TestLoadSTTFromEnv(t *testing.T) {
 	}
 	if cfg.STTSampleRate != 48000 {
 		t.Fatalf("STTSampleRate = %d, want 48000", cfg.STTSampleRate)
+	}
+	if cfg.DeepgramSpeakURL != "https://example.test/speak" {
+		t.Fatalf("DeepgramSpeakURL = %q", cfg.DeepgramSpeakURL)
+	}
+	if cfg.TTSModel != "aura-2-andromeda-en" {
+		t.Fatalf("TTSModel = %q", cfg.TTSModel)
 	}
 }
 

@@ -5,7 +5,7 @@ High-level architecture for the AI Voice Support Platform.
 > **Phase 1 media path is implemented:** browser ↔ LiveKit ↔ `voice-gateway` (session tokens, room bot, verification tone).  
 > **Phase 2 STT is implemented:** gateway decodes browser audio and streams transcripts from Deepgram.  
 > **Phase 3 AI orchestrator is implemented:** final transcripts → `ai-orchestrator` → streaming LLM replies (logs / HTTP SSE).  
-> **Phase 4 TTS is designed** ([tts-phase4.md](tts-phase4.md), [ADR 009](adr/009-deepgram-tts-in-voice-gateway.md)); implementation slices land next — spoken replies are not wired yet.
+> **Phase 4 TTS is implemented:** gateway Deepgram Speak (Ogg Opus) → LiveKit publish; sentence streaming + barge-in ([tts-phase4.md](tts-phase4.md), [ADR 009](adr/009-deepgram-tts-in-voice-gateway.md)).
 
 ---
 
@@ -29,9 +29,10 @@ Browser (apps/voice-prototype)
 LiveKit (local Docker)
   │
   ▼
-Voice Gateway  ← Phase 1–3 (tokens, subscribe, tone, STT, transcript handoff)
+Voice Gateway  ← Phase 1–4 (tokens, subscribe, tone, STT, orchestrator handoff, TTS)
   │
   ├── Deepgram STT (Phase 2, when configured)
+  ├── Deepgram Speak TTS (Phase 4, when configured)
   │
   ▼
 AI Orchestrator  ← Phase 3 (conversation context + LLM)
@@ -43,7 +44,7 @@ AI Orchestrator  ← Phase 3 (conversation context + LLM)
   └── Human escalation             ← later
   │
   ▼
-Caller (spoken reply after Phase 4 implementation)
+Caller (spoken reply via Phase 4 TTS)
 ```
 
 Phase 4 synthesizes and publishes reply audio from **`voice-gateway`** (media plane). Orchestrator stays text-only for this phase.
@@ -61,7 +62,7 @@ Supporting capabilities planned around this core:
 | Service | Responsibility | Owns data? | Status |
 |---------|----------------|------------|--------|
 | **api-gateway** | External API surface, request routing, future auth/tenancy boundary | No (stateless edge) | Skeleton |
-| **voice-gateway** | Media-plane adapter: LiveKit sessions, PCM decode, STT, orchestrator handoff, Phase 4 TTS publish | No (real-time bridge) | Phase 1–3 runtime; TTS designed |
+| **voice-gateway** | Media-plane adapter: LiveKit sessions, PCM decode, STT, orchestrator handoff, TTS publish | No (real-time bridge) | Phase 1–4 runtime |
 | **ai-orchestrator** | Conversation control plane: context, LLM streaming, future RAG/tools/escalation | In-memory session state (Phase 3); durable ownership TBD | Phase 3 runtime |
 | **call-service** | Call records, lifecycle state, call-domain queries | Yes — owns schema + migrations | Skeleton |
 
