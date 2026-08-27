@@ -1,14 +1,17 @@
-# Voice Prototype (Phase 1–2)
+# Voice Prototype (Phase 1–3)
 
 Minimal browser client: request a session from `voice-gateway`, join LiveKit, publish microphone audio, and play the gateway verification tone.
 
-When `DEEPGRAM_API_KEY` is configured on the gateway, speaking into the mic produces partial/final transcript logs on the server (not shown in this UI). See [docs/architecture/stt-phase2.md](../../docs/architecture/stt-phase2.md).
+When `DEEPGRAM_API_KEY` and `AI_ORCHESTRATOR_URL` are configured (with orchestrator running and `LLM_API_KEY` set), speaking into the mic produces STT logs on the gateway and LLM replies on `ai-orchestrator` (not shown in this UI yet — TTS is Phase 4).
+
+See [docs/architecture/stt-phase2.md](../../docs/architecture/stt-phase2.md) and [docs/architecture/orchestrator-phase3.md](../../docs/architecture/orchestrator-phase3.md).
 
 ## Prerequisites
 
 1. LiveKit: `make livekit-up`
-2. voice-gateway: `make run-voice-gateway`
-3. CORS origin must match Vite (`VOICE_GATEWAY_CORS_ORIGIN=http://127.0.0.1:5173`)
+2. ai-orchestrator: `make run-ai-orchestrator` (optional for Phase 1–2 only)
+3. voice-gateway: `make run-voice-gateway`
+4. CORS origin must match Vite (`VOICE_GATEWAY_CORS_ORIGIN=http://127.0.0.1:5173`)
 
 ## Run
 

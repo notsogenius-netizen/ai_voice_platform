@@ -3,7 +3,8 @@
 High-level architecture for the AI Voice Support Platform.
 
 > **Phase 1 media path is implemented:** browser ↔ LiveKit ↔ `voice-gateway` (session tokens, room bot, verification tone).  
-> **Phase 2 STT is implemented:** gateway decodes browser audio and streams transcripts from Deepgram (logs only). AI orchestrator, TTS, and later services remain planned.
+> **Phase 2 STT is implemented:** gateway decodes browser audio and streams transcripts from Deepgram.  
+> **Phase 3 AI orchestrator is implemented:** final transcripts → `ai-orchestrator` → streaming LLM replies (logs / HTTP SSE). TTS remains Phase 4.
 
 ---
 
@@ -27,22 +28,21 @@ Browser (apps/voice-prototype)
 LiveKit (local Docker)
   │
   ▼
-Voice Gateway  ← Phase 1–2 (tokens, subscribe, tone, STT)
+Voice Gateway  ← Phase 1–3 (tokens, subscribe, tone, STT, transcript handoff)
   │
   ├── Deepgram STT (Phase 2, when configured)
   │
   ▼
-AI Orchestrator  ← Phase 3+
+AI Orchestrator  ← Phase 3 (conversation context + LLM)
   │
-  ├── Speech-to-Text
-  ├── LLM
-  ├── Text-to-Speech
-  ├── RAG / knowledge retrieval
-  ├── Tool calling
-  └── Human escalation
+  ├── LLM (OpenAI-compatible; Gemini default)
+  ├── Text-to-Speech          ← Phase 4
+  ├── RAG / knowledge        ← later
+  ├── Tool calling            ← later
+  └── Human escalation        ← later
   │
   ▼
-Caller
+Caller (spoken reply after Phase 4)
 ```
 
 Supporting capabilities planned around this core:
@@ -58,8 +58,8 @@ Supporting capabilities planned around this core:
 | Service | Responsibility | Owns data? | Status |
 |---------|----------------|------------|--------|
 | **api-gateway** | External API surface, request routing, future auth/tenancy boundary | No (stateless edge) | Skeleton |
-| **voice-gateway** | Media-plane adapter: LiveKit sessions, PCM decode, STT, future orchestration signals | No (real-time bridge) | Phase 1–2 runtime |
-| **ai-orchestrator** | Conversation control plane: STT/LLM/TTS/RAG/tools/escalation orchestration | TBD when durable agent/session state is defined | Skeleton |
+| **voice-gateway** | Media-plane adapter: LiveKit sessions, PCM decode, STT, orchestrator handoff | No (real-time bridge) | Phase 1–3 runtime |
+| **ai-orchestrator** | Conversation control plane: context, LLM streaming, future RAG/tools/escalation | In-memory session state (Phase 3); durable ownership TBD | Phase 3 runtime |
 | **call-service** | Call records, lifecycle state, call-domain queries | Yes — owns schema + migrations | Skeleton |
 
 ### Ownership rules
@@ -121,7 +121,7 @@ Intended CI shape:
 - Change under `pkg/**` → rebuild/test services that depend on the changed package
 - Migration changes under a service → treated as a change to that service
 
-Cloud provider is intentionally unlocked; Terraform will isolate provider-specific modules when deployment starts (ADR 004). Docker is the primary container toolchain (ADR 005). LiveKit + Phase-1 token ownership: ADR 006. Phase-2 STT: ADR 007.
+Cloud provider is intentionally unlocked; Terraform will isolate provider-specific modules when deployment starts (ADR 004). Docker is the primary container toolchain (ADR 005). LiveKit + Phase-1 token ownership: ADR 006. Phase-2 STT: ADR 007. Phase-3 orchestrator: ADR 008.
 
 ## Local LiveKit
 
@@ -130,6 +130,10 @@ Phase 1 local SFU setup: [livekit-local.md](livekit-local.md).
 ## Phase 2 STT
 
 Streaming speech-to-text verification: [stt-phase2.md](stt-phase2.md).
+
+## Phase 3 AI Orchestrator
+
+Conversation + LLM verification: [orchestrator-phase3.md](orchestrator-phase3.md).
 
 ## ADRs
 

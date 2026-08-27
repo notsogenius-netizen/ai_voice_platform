@@ -94,5 +94,8 @@ stt final room=sess_... identity=browser-... track=TR_... text="hello world"
 
 - Transcripts in the browser UI
 - Persisting transcripts (`call-service` — Phase 6)
-- Sending transcripts to `ai-orchestrator` (Phase 3)
 - Multi-provider STT
+
+## Later (Phase 3+)
+
+Final transcripts are forwarded to `ai-orchestrator` when `AI_ORCHESTRATOR_URL` is set. See [orchestrator-phase3.md](orchestrator-phase3.md) and [ADR 008](adr/008-ai-orchestrator-phase3.md).
