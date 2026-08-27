@@ -37,4 +37,4 @@
 - `voice-gateway` opens a Deepgram stream per subscribed browser audio track when STT is configured.
 - Partial and final transcripts are logged with `room`, `identity`, and `track` IDs.
 - STT failure degrades gracefully: PCM path and verification tone continue; errors are logged.
-- Phase 3 will introduce `ai-orchestrator`; transcript handoff to the orchestrator is a later wiring step.
+- Phase 3 introduced `ai-orchestrator`; final transcript handoff is implemented (see [ADR 008](008-ai-orchestrator-phase3.md) and [orchestrator-phase3.md](../orchestrator-phase3.md)).
