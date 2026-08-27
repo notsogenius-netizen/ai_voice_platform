@@ -12,7 +12,7 @@ Browser → LiveKit → voice-gateway → Deepgram (STT)
                                     └── reply stream (SSE) → gateway logs handoff
 ```
 
-TTS (spoken reply in the browser) is **Phase 4**. Phase 3 verifies **speak → STT → LLM** via logs.
+TTS (spoken reply in the browser) is **Phase 4** — see [tts-phase4.md](tts-phase4.md) and [ADR 009](adr/009-deepgram-tts-in-voice-gateway.md). Phase 3 verifies **speak → STT → LLM** via logs.
 
 Decision record: [ADR 008](adr/008-ai-orchestrator-phase3.md).
 
@@ -152,7 +152,7 @@ Mark Phase 3 complete only after all items pass.
 
 ## Out of scope (Phase 3)
 
-- TTS / audible AI replies (Phase 4)
+- TTS / audible AI replies ([Phase 4](tts-phase4.md))
 - Browser UI for transcripts or AI text
 - Persisting calls/transcripts (Phase 6)
 - Redis conversation state (Phase 7)

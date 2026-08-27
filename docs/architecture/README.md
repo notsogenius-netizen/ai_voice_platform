@@ -4,7 +4,8 @@ High-level architecture for the AI Voice Support Platform.
 
 > **Phase 1 media path is implemented:** browser ↔ LiveKit ↔ `voice-gateway` (session tokens, room bot, verification tone).  
 > **Phase 2 STT is implemented:** gateway decodes browser audio and streams transcripts from Deepgram.  
-> **Phase 3 AI orchestrator is implemented:** final transcripts → `ai-orchestrator` → streaming LLM replies (logs / HTTP SSE). TTS remains Phase 4.
+> **Phase 3 AI orchestrator is implemented:** final transcripts → `ai-orchestrator` → streaming LLM replies (logs / HTTP SSE).  
+> **Phase 4 TTS is designed** ([tts-phase4.md](tts-phase4.md), [ADR 009](adr/009-deepgram-tts-in-voice-gateway.md)); implementation slices land next — spoken replies are not wired yet.
 
 ---
 
@@ -36,14 +37,16 @@ Voice Gateway  ← Phase 1–3 (tokens, subscribe, tone, STT, transcript handoff
 AI Orchestrator  ← Phase 3 (conversation context + LLM)
   │
   ├── LLM (OpenAI-compatible; Gemini default)
-  ├── Text-to-Speech          ← Phase 4
-  ├── RAG / knowledge        ← later
-  ├── Tool calling            ← later
-  └── Human escalation        ← later
+  ├── Text-to-Speech (capability)  ← Phase 4 — runtime in voice-gateway (ADR 009)
+  ├── RAG / knowledge             ← later
+  ├── Tool calling                 ← later
+  └── Human escalation             ← later
   │
   ▼
-Caller (spoken reply after Phase 4)
+Caller (spoken reply after Phase 4 implementation)
 ```
+
+Phase 4 synthesizes and publishes reply audio from **`voice-gateway`** (media plane). Orchestrator stays text-only for this phase.
 
 Supporting capabilities planned around this core:
 
@@ -58,7 +61,7 @@ Supporting capabilities planned around this core:
 | Service | Responsibility | Owns data? | Status |
 |---------|----------------|------------|--------|
 | **api-gateway** | External API surface, request routing, future auth/tenancy boundary | No (stateless edge) | Skeleton |
-| **voice-gateway** | Media-plane adapter: LiveKit sessions, PCM decode, STT, orchestrator handoff | No (real-time bridge) | Phase 1–3 runtime |
+| **voice-gateway** | Media-plane adapter: LiveKit sessions, PCM decode, STT, orchestrator handoff, Phase 4 TTS publish | No (real-time bridge) | Phase 1–3 runtime; TTS designed |
 | **ai-orchestrator** | Conversation control plane: context, LLM streaming, future RAG/tools/escalation | In-memory session state (Phase 3); durable ownership TBD | Phase 3 runtime |
 | **call-service** | Call records, lifecycle state, call-domain queries | Yes — owns schema + migrations | Skeleton |
 
@@ -121,7 +124,7 @@ Intended CI shape:
 - Change under `pkg/**` → rebuild/test services that depend on the changed package
 - Migration changes under a service → treated as a change to that service
 
-Cloud provider is intentionally unlocked; Terraform will isolate provider-specific modules when deployment starts (ADR 004). Docker is the primary container toolchain (ADR 005). LiveKit + Phase-1 token ownership: ADR 006. Phase-2 STT: ADR 007. Phase-3 orchestrator: ADR 008.
+Cloud provider is intentionally unlocked; Terraform will isolate provider-specific modules when deployment starts (ADR 004). Docker is the primary container toolchain (ADR 005). LiveKit + Phase-1 token ownership: ADR 006. Phase-2 STT: ADR 007. Phase-3 orchestrator: ADR 008. Phase-4 TTS: ADR 009.
 
 ## Local LiveKit
 
@@ -134,6 +137,10 @@ Streaming speech-to-text verification: [stt-phase2.md](stt-phase2.md).
 ## Phase 3 AI Orchestrator
 
 Conversation + LLM verification: [orchestrator-phase3.md](orchestrator-phase3.md).
+
+## Phase 4 TTS
+
+Audible AI replies (Deepgram Speak in voice-gateway): [tts-phase4.md](tts-phase4.md).
 
 ## ADRs
 
