@@ -17,8 +17,10 @@ import (
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/roombot"
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/session"
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/stt"
-	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/stt/deepgram"
+	sttdeepgram "github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/stt/deepgram"
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/token"
+	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/tts"
+	ttsdeepgram "github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/tts/deepgram"
 )
 
 func main() {
@@ -37,9 +39,14 @@ func run() error {
 	defer stop()
 
 	logSTTStatus(cfg)
+	logTTSStatus(cfg)
 	logOrchestratorStatus(cfg)
 
 	sttClient, err := newSTTClient(cfg)
+	if err != nil {
+		return err
+	}
+	ttsClient, err := newTTSClient(cfg)
 	if err != nil {
 		return err
 	}
@@ -48,7 +55,7 @@ func run() error {
 		return err
 	}
 
-	srv, errCh := startServer(cfg, rootCtx, sttClient, orchClient)
+	srv, errCh := startServer(cfg, rootCtx, sttClient, ttsClient, orchClient)
 	return waitForShutdown(rootCtx, srv, errCh)
 }
 
@@ -64,15 +71,38 @@ func logSTTStatus(cfg config.Config) {
 	log.Printf("stt: disabled (set DEEPGRAM_API_KEY to enable)")
 }
 
+func logTTSStatus(cfg config.Config) {
+	if cfg.TTSEnabled() {
+		log.Printf(
+			"tts: enabled provider=deepgram model=%s speak_url=%s",
+			cfg.TTSModel,
+			cfg.DeepgramSpeakURL,
+		)
+		return
+	}
+	log.Printf("tts: disabled (set DEEPGRAM_API_KEY to enable)")
+}
+
 func newSTTClient(cfg config.Config) (stt.Client, error) {
 	if !cfg.STTEnabled() {
 		return nil, nil
 	}
-	return deepgram.NewClient(deepgram.Config{
+	return sttdeepgram.NewClient(sttdeepgram.Config{
 		APIKey:         cfg.DeepgramAPIKey,
 		ListenURL:      cfg.DeepgramListenURL,
 		SampleRate:     cfg.STTSampleRate,
 		ConnectTimeout: 10 * time.Second,
+	})
+}
+
+func newTTSClient(cfg config.Config) (tts.Client, error) {
+	if !cfg.TTSEnabled() {
+		return nil, nil
+	}
+	return ttsdeepgram.NewClient(ttsdeepgram.Config{
+		APIKey:   cfg.DeepgramAPIKey,
+		SpeakURL: cfg.DeepgramSpeakURL,
+		Model:    cfg.TTSModel,
 	})
 }
 
@@ -94,8 +124,14 @@ func newOrchestratorClient(cfg config.Config) (orchestrator.Client, error) {
 	})
 }
 
-func startServer(cfg config.Config, rootCtx context.Context, sttClient stt.Client, orchClient orchestrator.Client) (*http.Server, <-chan error) {
-	srv := newHTTPServer(cfg, rootCtx, sttClient, orchClient)
+func startServer(
+	cfg config.Config,
+	rootCtx context.Context,
+	sttClient stt.Client,
+	ttsClient tts.Client,
+	orchClient orchestrator.Client,
+) (*http.Server, <-chan error) {
+	srv := newHTTPServer(cfg, rootCtx, sttClient, ttsClient, orchClient)
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -105,7 +141,13 @@ func startServer(cfg config.Config, rootCtx context.Context, sttClient stt.Clien
 	return srv, errCh
 }
 
-func newHTTPServer(cfg config.Config, rootCtx context.Context, sttClient stt.Client, orchClient orchestrator.Client) *http.Server {
+func newHTTPServer(
+	cfg config.Config,
+	rootCtx context.Context,
+	sttClient stt.Client,
+	ttsClient tts.Client,
+	orchClient orchestrator.Client,
+) *http.Server {
 	minter := token.Minter{
 		APIKey:    cfg.LiveKitAPIKey,
 		APISecret: cfg.LiveKitAPISecret,
@@ -118,11 +160,12 @@ func newHTTPServer(cfg config.Config, rootCtx context.Context, sttClient stt.Cli
 			Minter:     minter,
 			RootCtx:    rootCtx,
 			Bot: roombot.Bot{
-				LiveKitURL:     cfg.LiveKitURL,
-				Minter:         minter,
-				STTSampleRate:  cfg.STTSampleRate,
-				STT:            sttClient,
-				Orchestrator:   orchClient,
+				LiveKitURL:    cfg.LiveKitURL,
+				Minter:        minter,
+				STTSampleRate: cfg.STTSampleRate,
+				STT:           sttClient,
+				TTS:           ttsClient,
+				Orchestrator:  orchClient,
 			},
 		},
 	}

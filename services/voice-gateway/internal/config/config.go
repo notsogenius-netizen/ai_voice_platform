@@ -10,25 +10,29 @@ import (
 
 const (
 	defaultDeepgramListenURL = "wss://api.deepgram.com/v1/listen"
+	defaultDeepgramSpeakURL  = "https://api.deepgram.com/v1/speak"
 	defaultSTTSampleRate     = 16000
+	defaultTTSModel          = "aura-2-thalia-en"
 )
 
 // Config holds runtime settings for the voice-gateway process.
 type Config struct {
-	Addr               string
-	CORSOrigin         string
-	LiveKitURL         string
-	LiveKitAPIKey      string
-	LiveKitAPISecret   string
-	DeepgramAPIKey     string
-	DeepgramListenURL  string
-	STTSampleRate      int
-	OrchestratorURL    string
+	Addr              string
+	CORSOrigin        string
+	LiveKitURL        string
+	LiveKitAPIKey     string
+	LiveKitAPISecret  string
+	DeepgramAPIKey    string
+	DeepgramListenURL string
+	STTSampleRate     int
+	DeepgramSpeakURL  string
+	TTSModel          string
+	OrchestratorURL   string
 }
 
 // Load reads configuration from environment variables.
 func Load() (Config, error) {
-	sampleRate, err := envIntOr("STT_SAMPLE_RATE", defaultSTTSampleRate)
+	sttSampleRate, err := envIntOr("STT_SAMPLE_RATE", defaultSTTSampleRate)
 	if err != nil {
 		return Config{}, fmt.Errorf("STT_SAMPLE_RATE: %w", err)
 	}
@@ -41,7 +45,9 @@ func Load() (Config, error) {
 		LiveKitAPISecret:  envOr("LIVEKIT_API_SECRET", ""),
 		DeepgramAPIKey:    strings.TrimSpace(os.Getenv("DEEPGRAM_API_KEY")),
 		DeepgramListenURL: envOr("DEEPGRAM_LISTEN_URL", defaultDeepgramListenURL),
-		STTSampleRate:     sampleRate,
+		STTSampleRate:     sttSampleRate,
+		DeepgramSpeakURL:  envOr("DEEPGRAM_SPEAK_URL", defaultDeepgramSpeakURL),
+		TTSModel:          envOr("TTS_MODEL", defaultTTSModel),
 		OrchestratorURL:   strings.TrimSpace(os.Getenv("AI_ORCHESTRATOR_URL")),
 	}
 	if err := cfg.validate(); err != nil {
@@ -52,6 +58,11 @@ func Load() (Config, error) {
 
 // STTEnabled reports whether streaming STT is configured.
 func (c Config) STTEnabled() bool {
+	return c.DeepgramAPIKey != ""
+}
+
+// TTSEnabled reports whether text-to-speech is configured.
+func (c Config) TTSEnabled() bool {
 	return c.DeepgramAPIKey != ""
 }
 
@@ -78,6 +89,12 @@ func (c Config) validate() error {
 	}
 	if strings.TrimSpace(c.DeepgramListenURL) == "" {
 		return fmt.Errorf("DEEPGRAM_LISTEN_URL must not be empty")
+	}
+	if strings.TrimSpace(c.DeepgramSpeakURL) == "" {
+		return fmt.Errorf("DEEPGRAM_SPEAK_URL must not be empty")
+	}
+	if strings.TrimSpace(c.TTSModel) == "" {
+		return fmt.Errorf("TTS_MODEL must not be empty")
 	}
 	if c.STTSampleRate <= 0 {
 		return fmt.Errorf("STT_SAMPLE_RATE must be positive")

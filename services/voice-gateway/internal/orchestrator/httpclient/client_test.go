@@ -50,6 +50,41 @@ func TestSendTurnStreamsReply(t *testing.T) {
 	}
 }
 
+func TestStreamTurnInvokesChunks(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, strings.Join([]string{
+			`data: {"text":"Hello"}`,
+			``,
+			`data: {"text":" there."}`,
+			``,
+			`data: [DONE]`,
+			``,
+		}, "\n"))
+	}))
+	defer srv.Close()
+
+	client := mustClient(t, srv.URL)
+	var chunks []string
+	reply, err := client.StreamTurn(
+		context.Background(),
+		orchestrator.Turn{SessionID: "room-1", Text: "hi", IsFinal: true},
+		func(text string) error {
+			chunks = append(chunks, text)
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("StreamTurn: %v", err)
+	}
+	if reply.Text != "Hello there." {
+		t.Fatalf("reply = %q", reply.Text)
+	}
+	if len(chunks) != 2 || chunks[0] != "Hello" || chunks[1] != " there." {
+		t.Fatalf("chunks = %#v", chunks)
+	}
+}
+
 func TestSendTurnIgnoredPartial(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

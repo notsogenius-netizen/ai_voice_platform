@@ -14,15 +14,17 @@ import (
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/orchestrator"
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/stt"
 	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/token"
+	"github.com/sourabh/ai-voice-platform/services/voice-gateway/internal/tts"
 )
 
 // Bot connects to LiveKit rooms and observes remote audio tracks.
 type Bot struct {
-	LiveKitURL     string
-	Minter         token.Minter
-	STTSampleRate  int
-	STT            stt.Client
-	Orchestrator   orchestrator.Client
+	LiveKitURL    string
+	Minter        token.Minter
+	STTSampleRate int
+	STT           stt.Client
+	TTS           tts.Client
+	Orchestrator  orchestrator.Client
 }
 
 // Join connects as voice-gateway, logs participants/tracks, and blocks until ctx ends.
@@ -33,9 +35,10 @@ func (b Bot) Join(ctx context.Context, roomName string) error {
 	}
 
 	state := &joinState{
-		ctx:    ctx,
-		bot:    b,
-		tracks: newTrackSet(),
+		ctx:      ctx,
+		bot:      b,
+		tracks:   newTrackSet(),
+		playback: newReplyPlayback(0),
 	}
 	room, err := lksdk.ConnectToRoomWithToken(
 		b.LiveKitURL,
@@ -48,6 +51,7 @@ func (b Bot) Join(ctx context.Context, roomName string) error {
 	}
 	defer room.Disconnect()
 	defer state.tracks.closeAll()
+	defer state.playback.Interrupt()
 	state.room.Store(room)
 
 	log.Printf("roombot: joined room=%s as voice-gateway", roomName)
@@ -64,6 +68,8 @@ type joinState struct {
 	ctx      context.Context
 	bot      Bot
 	tracks   *trackSet
+	playback *replyPlayback
+	turnMu   sync.Mutex
 }
 
 func (s *joinState) callbacks(roomName string) *lksdk.RoomCallback {
@@ -131,7 +137,17 @@ func (s *joinState) onTrackSubscribed(
 		s.toneOnce.Do(func() {
 			go s.publishToneWhenReady()
 		})
-		s.bot.startAudioTrack(s.ctx, roomName, track, rp, s.tracks)
+		s.bot.startAudioTrack(s.ctx, roomName, track, rp, s.tracks, s.turnPipeline())
+	}
+}
+
+func (s *joinState) turnPipeline() *turnPipeline {
+	return &turnPipeline{
+		orch:     s.bot.Orchestrator,
+		tts:      s.bot.TTS,
+		room:     func() *lksdk.Room { return s.room.Load() },
+		playback: s.playback,
+		turnMu:   &s.turnMu,
 	}
 }
 

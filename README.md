@@ -4,7 +4,7 @@ Multi-tenant AI Voice Support Platform for real-time conversational support acro
 
 Organizations will eventually configure AI voice agents that converse with users, retrieve organization-specific knowledge, invoke backend tools, and escalate to human agents.
 
-> **Status:** Phase 1–3 runnable locally (LiveKit + `voice-gateway` + browser prototype + optional Deepgram STT + `ai-orchestrator` LLM turns). Phase 4 TTS is designed ([docs](docs/architecture/tts-phase4.md), [ADR 009](docs/architecture/adr/009-deepgram-tts-in-voice-gateway.md)); spoken replies are not wired yet.
+> **Status:** Phase 1–4 runnable locally (LiveKit + `voice-gateway` + browser prototype + optional Deepgram STT/TTS + `ai-orchestrator` LLM turns). Later infrastructure (persistence, Redis, tenancy, RAG) is not implemented yet.
 
 ---
 
@@ -19,7 +19,7 @@ This repository currently contains:
 - **Phase 1:** local LiveKit (Docker), `voice-gateway` session tokens + room bot + verification tone, `apps/voice-prototype` browser client
 - **Phase 2:** streaming STT — Opus→PCM in gateway, Deepgram WebSocket, partial/final transcript logs ([docs](docs/architecture/stt-phase2.md), [ADR 007](docs/architecture/adr/007-deepgram-stt-in-voice-gateway.md))
 - **Phase 3:** `ai-orchestrator` — in-memory conversation state, OpenAI-compatible streaming LLM (Gemini default), turn API; gateway forwards final transcripts ([docs](docs/architecture/orchestrator-phase3.md), [ADR 008](docs/architecture/adr/008-ai-orchestrator-phase3.md))
-- **Phase 4 (designed):** Deepgram TTS in `voice-gateway` — spoken replies after LLM SSE ([docs](docs/architecture/tts-phase4.md), [ADR 009](docs/architecture/adr/009-deepgram-tts-in-voice-gateway.md)); implementation slices next
+- **Phase 4:** Deepgram Speak TTS in `voice-gateway` — Ogg Opus publish to LiveKit, sentence streaming, barge-in ([docs](docs/architecture/tts-phase4.md), [ADR 009](docs/architecture/adr/009-deepgram-tts-in-voice-gateway.md))
 
 Kafka, Redis, PostgreSQL runtime, Kubernetes, and cloud deploy are still ahead.
 
@@ -79,7 +79,7 @@ Only `call-service` has a `migrations/` directory today, as the first service ex
 | Build | Conventional Go modules + Makefile | Active |
 | Realtime media | LiveKit (browser WebRTC) | Phase 1 local Docker + gateway |
 | STT | Deepgram (streaming, gateway) | Phase 2 (optional via env) |
-| TTS | Deepgram Speak (gateway) | Phase 4 designed; not wired yet |
+| TTS | Deepgram Speak → LiveKit (gateway, Ogg Opus) | Phase 4 (optional via env) |
 | LLM | OpenAI-compatible API (Gemini default) | Phase 3 (optional via env) |
 | Containers | Docker / OCI; Docker Hub as initial registry | LiveKit Compose only so far |
 | Orchestration | Kubernetes + Helm (planned) | Directories only |
@@ -120,12 +120,12 @@ README.md
 
 ## Local development
 
-Phase 1–3 local stack:
+Phase 1–4 local stack:
 
 ```bash
 make livekit-up
 make run-ai-orchestrator   # loads .env; set LLM_API_KEY for LLM turns
-make run-voice-gateway     # loads .env; DEEPGRAM_API_KEY + AI_ORCHESTRATOR_URL for STT→LLM
+make run-voice-gateway     # loads .env; DEEPGRAM_API_KEY + AI_ORCHESTRATOR_URL for STT→LLM→TTS
 make run-voice-prototype   # http://127.0.0.1:5173
 ```
 

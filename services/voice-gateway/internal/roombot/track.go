@@ -79,10 +79,11 @@ func (b Bot) startAudioTrack(
 	track *webrtc.TrackRemote,
 	rp *lksdk.RemoteParticipant,
 	tracks *trackSet,
+	pipeline *turnPipeline,
 ) {
 	label, sess := trackSTTSession(roomName, rp, track)
 	trackCtx, cancel := context.WithCancel(ctx)
-	pipe := b.openSTTStream(trackCtx, sess, label)
+	pipe := b.openSTTStream(trackCtx, sess, label, pipeline)
 
 	pcmTrack, err := pcm.StartRemoteTrack(trackCtx, track, b.STTSampleRate, label, pipe.writeFn())
 	if err != nil {
@@ -127,6 +128,7 @@ func (b Bot) openSTTStream(
 	ctx context.Context,
 	sess stt.Session,
 	label string,
+	pipeline *turnPipeline,
 ) *sttPipe {
 	if b.STT == nil {
 		return nil
@@ -139,7 +141,7 @@ func (b Bot) openSTTStream(
 	}
 
 	pipe := newSTTPipe(stream, label)
-	go readTranscripts(ctx, pipe, b.Orchestrator)
+	go readTranscripts(ctx, pipe, pipeline)
 	log.Printf("roombot: stt stream opened %s", label)
 	return pipe
 }

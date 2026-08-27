@@ -48,8 +48,17 @@ func NewClient(cfg Config) (*Client, error) {
 	return &Client{cfg: cfg, postFn: httpClient.Do}, nil
 }
 
-// SendTurn forwards one transcript turn to ai-orchestrator.
+// SendTurn forwards one transcript turn and returns the full reply text.
 func (c *Client) SendTurn(ctx context.Context, turn orchestrator.Turn) (orchestrator.Reply, error) {
+	return c.StreamTurn(ctx, turn, nil)
+}
+
+// StreamTurn forwards one turn and invokes onChunk for each SSE text fragment.
+func (c *Client) StreamTurn(
+	ctx context.Context,
+	turn orchestrator.Turn,
+	onChunk orchestrator.ChunkHandler,
+) (orchestrator.Reply, error) {
 	body, err := json.Marshal(turnRequest{
 		Text:    turn.Text,
 		IsFinal: turn.IsFinal,
@@ -79,10 +88,13 @@ func (c *Client) SendTurn(ctx context.Context, turn orchestrator.Turn) (orchestr
 	}
 	defer resp.Body.Close()
 
-	return c.readResponse(resp)
+	return c.readResponse(resp, onChunk)
 }
 
-func (c *Client) readResponse(resp *http.Response) (orchestrator.Reply, error) {
+func (c *Client) readResponse(
+	resp *http.Response,
+	onChunk orchestrator.ChunkHandler,
+) (orchestrator.Reply, error) {
 	if resp.StatusCode == http.StatusAccepted {
 		return orchestrator.Reply{Ignored: true}, nil
 	}
@@ -92,7 +104,7 @@ func (c *Client) readResponse(resp *http.Response) (orchestrator.Reply, error) {
 	}
 
 	if strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream") {
-		text, err := readSSEText(resp.Body)
+		text, err := readSSEText(resp.Body, onChunk)
 		if err != nil {
 			return orchestrator.Reply{}, err
 		}
@@ -118,7 +130,7 @@ func readErrorBody(r io.Reader) string {
 	return strings.TrimSpace(string(b))
 }
 
-func readSSEText(body io.Reader) (string, error) {
+func readSSEText(body io.Reader, onChunk orchestrator.ChunkHandler) (string, error) {
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
@@ -136,7 +148,15 @@ func readSSEText(body io.Reader) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		if text == "" {
+			continue
+		}
 		reply.WriteString(text)
+		if onChunk != nil {
+			if err := onChunk(text); err != nil {
+				return reply.String(), err
+			}
+		}
 	}
 	if err := scanner.Err(); err != nil {
 		return "", fmt.Errorf("orchestrator read stream: %w", err)
