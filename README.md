@@ -4,7 +4,7 @@ Multi-tenant AI Voice Support Platform for real-time conversational support acro
 
 Organizations will eventually configure AI voice agents that converse with users, retrieve organization-specific knowledge, invoke backend tools, and escalate to human agents.
 
-> **Status:** Phase 1–3 runnable locally (LiveKit + `voice-gateway` + browser prototype + optional Deepgram STT + `ai-orchestrator` LLM turns). TTS and later infrastructure are not implemented yet.
+> **Status:** Phase 1–3 runnable locally (LiveKit + `voice-gateway` + browser prototype + optional Deepgram STT + `ai-orchestrator` LLM turns). Phase 4 TTS is designed ([docs](docs/architecture/tts-phase4.md), [ADR 009](docs/architecture/adr/009-deepgram-tts-in-voice-gateway.md)); spoken replies are not wired yet.
 
 ---
 
@@ -15,12 +15,13 @@ This repository currently contains:
 - Monorepo skeleton and directory layout
 - Independent Go modules per deployable service
 - Makefile targets for tests, quality gate, LiveKit, voice-gateway, ai-orchestrator, and the browser prototype
-- Architecture overview and Architecture Decision Records (ADRs), including LiveKit (ADR 006), STT (ADR 007), and orchestrator (ADR 008)
+- Architecture overview and Architecture Decision Records (ADRs), including LiveKit (ADR 006), STT (ADR 007), orchestrator (ADR 008), and TTS design (ADR 009)
 - **Phase 1:** local LiveKit (Docker), `voice-gateway` session tokens + room bot + verification tone, `apps/voice-prototype` browser client
 - **Phase 2:** streaming STT — Opus→PCM in gateway, Deepgram WebSocket, partial/final transcript logs ([docs](docs/architecture/stt-phase2.md), [ADR 007](docs/architecture/adr/007-deepgram-stt-in-voice-gateway.md))
 - **Phase 3:** `ai-orchestrator` — in-memory conversation state, OpenAI-compatible streaming LLM (Gemini default), turn API; gateway forwards final transcripts ([docs](docs/architecture/orchestrator-phase3.md), [ADR 008](docs/architecture/adr/008-ai-orchestrator-phase3.md))
+- **Phase 4 (designed):** Deepgram TTS in `voice-gateway` — spoken replies after LLM SSE ([docs](docs/architecture/tts-phase4.md), [ADR 009](docs/architecture/adr/009-deepgram-tts-in-voice-gateway.md)); implementation slices next
 
-TTS, Kafka, Redis, PostgreSQL runtime, Kubernetes, and cloud deploy are still ahead.
+Kafka, Redis, PostgreSQL runtime, Kubernetes, and cloud deploy are still ahead.
 
 ## Planned architecture (not fully implemented)
 
@@ -47,8 +48,8 @@ Decision details: [ADR 001](docs/architecture/adr/001-monorepo.md).
 | Service | Role (planned) | Persistence (planned) |
 |---------|----------------|------------------------|
 | `api-gateway` | External HTTP/API edge, routing, auth boundary | Stateless (no migrations yet) |
-| `voice-gateway` | Bridge between LiveKit / media plane and AI orchestration | Stateless (no migrations yet) |
-| `ai-orchestrator` | Conversation loop: LLM (+ future RAG/tools/TTS orchestration), escalation | In-memory sessions today; durable state later |
+| `voice-gateway` | Bridge between LiveKit / media plane and AI orchestration (STT + Phase 4 TTS) | Stateless (no migrations yet) |
+| `ai-orchestrator` | Conversation loop: LLM (+ future RAG/tools), escalation | In-memory sessions today; durable state later |
 | `call-service` | Call lifecycle, metadata, and call-domain persistence | Owns schema/migrations |
 
 Each service has its own `go.mod` and is expected to remain independently deployable. There is **no shared business/domain module**.
@@ -78,6 +79,7 @@ Only `call-service` has a `migrations/` directory today, as the first service ex
 | Build | Conventional Go modules + Makefile | Active |
 | Realtime media | LiveKit (browser WebRTC) | Phase 1 local Docker + gateway |
 | STT | Deepgram (streaming, gateway) | Phase 2 (optional via env) |
+| TTS | Deepgram Speak (gateway) | Phase 4 designed; not wired yet |
 | LLM | OpenAI-compatible API (Gemini default) | Phase 3 (optional via env) |
 | Containers | Docker / OCI; Docker Hub as initial registry | LiveKit Compose only so far |
 | Orchestration | Kubernetes + Helm (planned) | Directories only |
@@ -90,7 +92,8 @@ Build system choice: [ADR 002](docs/architecture/adr/002-go-modules.md).
 Container tooling: [ADR 005](docs/architecture/adr/005-docker-vs-podman.md).  
 LiveKit / tokens: [ADR 006](docs/architecture/adr/006-livekit-media-and-tokens.md).  
 Phase 2 STT: [ADR 007](docs/architecture/adr/007-deepgram-stt-in-voice-gateway.md).  
-Phase 3 orchestrator: [ADR 008](docs/architecture/adr/008-ai-orchestrator-phase3.md).
+Phase 3 orchestrator: [ADR 008](docs/architecture/adr/008-ai-orchestrator-phase3.md).  
+Phase 4 TTS: [ADR 009](docs/architecture/adr/009-deepgram-tts-in-voice-gateway.md).
 
 ## Deployment direction (planned)
 
@@ -126,7 +129,7 @@ make run-voice-gateway     # loads .env; DEEPGRAM_API_KEY + AI_ORCHESTRATOR_URL 
 make run-voice-prototype   # http://127.0.0.1:5173
 ```
 
-Verification: [livekit-local.md](docs/architecture/livekit-local.md), [stt-phase2.md](docs/architecture/stt-phase2.md), [orchestrator-phase3.md](docs/architecture/orchestrator-phase3.md).
+Verification: [livekit-local.md](docs/architecture/livekit-local.md), [stt-phase2.md](docs/architecture/stt-phase2.md), [orchestrator-phase3.md](docs/architecture/orchestrator-phase3.md), [tts-phase4.md](docs/architecture/tts-phase4.md).
 
 ```bash
 make test    # all service modules
@@ -143,3 +146,4 @@ Prefer simple solutions, explicit service boundaries, service-owned data, depend
 - [ADR index](docs/architecture/adr/README.md)
 - [Phase 2 STT](docs/architecture/stt-phase2.md)
 - [Phase 3 AI Orchestrator](docs/architecture/orchestrator-phase3.md)
+- [Phase 4 TTS](docs/architecture/tts-phase4.md)

@@ -2,9 +2,9 @@
 
 Minimal browser client: request a session from `voice-gateway`, join LiveKit, publish microphone audio, and play the gateway verification tone.
 
-When `DEEPGRAM_API_KEY` and `AI_ORCHESTRATOR_URL` are configured (with orchestrator running and `LLM_API_KEY` set), speaking into the mic produces STT logs on the gateway and LLM replies on `ai-orchestrator` (not shown in this UI yet — TTS is Phase 4).
+When `DEEPGRAM_API_KEY` and `AI_ORCHESTRATOR_URL` are configured (with orchestrator running and `LLM_API_KEY` set), speaking into the mic produces STT logs on the gateway and LLM replies on `ai-orchestrator` (spoken replies are Phase 4 — see [tts-phase4.md](../../docs/architecture/tts-phase4.md)).
 
-See [docs/architecture/stt-phase2.md](../../docs/architecture/stt-phase2.md) and [docs/architecture/orchestrator-phase3.md](../../docs/architecture/orchestrator-phase3.md).
+See [docs/architecture/stt-phase2.md](../../docs/architecture/stt-phase2.md), [docs/architecture/orchestrator-phase3.md](../../docs/architecture/orchestrator-phase3.md), and [docs/architecture/tts-phase4.md](../../docs/architecture/tts-phase4.md).
 
 ## Prerequisites
 

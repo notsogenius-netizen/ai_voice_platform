@@ -42,4 +42,4 @@
 - Partials return `202 ignored`; finals stream SSE chunks then `data: [DONE]`.
 - Gateway sets `AI_ORCHESTRATOR_URL` to enable forwarding; without it, STT-only Phase 2 behavior remains.
 - Orchestrator logs own conversation turns and LLM replies; gateway logs STT and forward success/failure only.
-- TTS, barge-in, and durable session state remain out of scope for Phase 3.
+- TTS, barge-in, and durable session state remain out of scope for Phase 3 (TTS: [ADR 009](009-deepgram-tts-in-voice-gateway.md)).
