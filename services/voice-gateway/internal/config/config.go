@@ -36,8 +36,15 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("STT_SAMPLE_RATE: %w", err)
 	}
+	cfg := loadFromEnv(sttSampleRate)
+	if err := cfg.validate(); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
 
-	cfg := Config{
+func loadFromEnv(sttSampleRate int) Config {
+	return Config{
 		Addr:              envOr("VOICE_GATEWAY_ADDR", ":8080"),
 		CORSOrigin:        envOr("VOICE_GATEWAY_CORS_ORIGIN", "http://127.0.0.1:5173"),
 		LiveKitURL:        envOr("LIVEKIT_URL", "ws://127.0.0.1:7880"),
@@ -50,10 +57,6 @@ func Load() (Config, error) {
 		TTSModel:          envOr("TTS_MODEL", defaultTTSModel),
 		OrchestratorURL:   strings.TrimSpace(os.Getenv("AI_ORCHESTRATOR_URL")),
 	}
-	if err := cfg.validate(); err != nil {
-		return Config{}, err
-	}
-	return cfg, nil
 }
 
 // STTEnabled reports whether streaming STT is configured.
@@ -72,7 +75,7 @@ func (c Config) OrchestratorEnabled() bool {
 }
 
 func (c Config) validate() error {
-	checks := []struct {
+	required := []struct {
 		name  string
 		value string
 	}{
@@ -81,20 +84,14 @@ func (c Config) validate() error {
 		{"LIVEKIT_URL", c.LiveKitURL},
 		{"LIVEKIT_API_KEY", c.LiveKitAPIKey},
 		{"LIVEKIT_API_SECRET", c.LiveKitAPISecret},
+		{"DEEPGRAM_LISTEN_URL", c.DeepgramListenURL},
+		{"DEEPGRAM_SPEAK_URL", c.DeepgramSpeakURL},
+		{"TTS_MODEL", c.TTSModel},
 	}
-	for _, check := range checks {
+	for _, check := range required {
 		if strings.TrimSpace(check.value) == "" {
 			return fmt.Errorf("%s must not be empty", check.name)
 		}
-	}
-	if strings.TrimSpace(c.DeepgramListenURL) == "" {
-		return fmt.Errorf("DEEPGRAM_LISTEN_URL must not be empty")
-	}
-	if strings.TrimSpace(c.DeepgramSpeakURL) == "" {
-		return fmt.Errorf("DEEPGRAM_SPEAK_URL must not be empty")
-	}
-	if strings.TrimSpace(c.TTSModel) == "" {
-		return fmt.Errorf("TTS_MODEL must not be empty")
 	}
 	if c.STTSampleRate <= 0 {
 		return fmt.Errorf("STT_SAMPLE_RATE must be positive")

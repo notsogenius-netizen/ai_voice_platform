@@ -36,62 +36,112 @@ func (p *replyPlayback) Playing() bool {
 
 // Interrupt stops current playback (barge-in). Safe when idle.
 func (p *replyPlayback) Interrupt() {
-	p.mu.Lock()
-	cancel := p.cancel
-	track := p.track
-	pub := p.pub
-	room := p.room
-	p.mu.Unlock()
-
+	cancel, track, pub, room := p.snapshot()
 	if cancel != nil {
 		cancel()
 	}
 	if track != nil {
 		_ = track.Close()
 	}
-	if room != nil && room.LocalParticipant != nil && pub != nil {
-		_ = room.LocalParticipant.UnpublishTrack(pub.SID())
+	unpublish(room, pub)
+}
+
+func (p *replyPlayback) snapshot() (
+	context.CancelFunc,
+	*lksdk.LocalTrack,
+	*lksdk.LocalTrackPublication,
+	*lksdk.Room,
+) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.cancel, p.track, p.pub, p.room
+}
+
+func unpublish(room *lksdk.Room, pub *lksdk.LocalTrackPublication) {
+	if room == nil || room.LocalParticipant == nil || pub == nil {
+		return
 	}
+	_ = room.LocalParticipant.UnpublishTrack(pub.SID())
 }
 
 // PlayOgg publishes one Ogg Opus clip and blocks until playout finishes or barge-in.
 func (p *replyPlayback) PlayOgg(ctx context.Context, room *lksdk.Room, ogg []byte) error {
+	if err := validatePlayRequest(room, ogg); err != nil {
+		return err
+	}
+	playCtx, cancel := context.WithCancel(ctx)
+	track, done, err := newOggTrack(ogg)
+	if err != nil {
+		cancel()
+		return err
+	}
+	pub, err := publishReplyTrack(room, track)
+	if err != nil {
+		cancel()
+		_ = track.Close()
+		return err
+	}
+	p.arm(cancel, track, pub, room)
+	defer p.clearIfCurrent(track)
+	return waitPlayout(playoutWait{
+		ctx:     ctx,
+		playCtx: playCtx,
+		room:    room,
+		track:   track,
+		pub:     pub,
+		done:    done,
+	})
+}
+
+func validatePlayRequest(room *lksdk.Room, ogg []byte) error {
 	if room == nil || room.LocalParticipant == nil {
 		return errors.New("reply playback: room unavailable")
 	}
 	if len(ogg) == 0 {
 		return errors.New("reply playback: empty ogg")
 	}
+	return nil
+}
 
-	playCtx, cancel := context.WithCancel(ctx)
+func newOggTrack(ogg []byte) (*lksdk.LocalTrack, <-chan struct{}, error) {
 	done := make(chan struct{})
 	track, err := lksdk.NewLocalReaderTrack(
 		io.NopCloser(bytes.NewReader(ogg)),
 		webrtc.MimeTypeOpus,
-		lksdk.ReaderTrackWithOnWriteComplete(func() {
-			select {
-			case <-done:
-			default:
-				close(done)
-			}
-		}),
+		lksdk.ReaderTrackWithOnWriteComplete(closeOnce(done)),
 	)
-	if err != nil {
-		cancel()
-		return err
-	}
+	return track, done, err
+}
 
+func closeOnce(done chan struct{}) func() {
+	return func() {
+		select {
+		case <-done:
+		default:
+			close(done)
+		}
+	}
+}
+
+func publishReplyTrack(room *lksdk.Room, track *lksdk.LocalTrack) (*lksdk.LocalTrackPublication, error) {
 	pub, err := room.LocalParticipant.PublishTrack(track, &lksdk.TrackPublicationOptions{
 		Name: "assistant-reply",
 	})
 	if err != nil {
-		cancel()
-		_ = track.Close()
-		return err
+		return nil, err
 	}
 	log.Printf("roombot: publishing reply audio room=%s", room.Name())
+	return pub, nil
+}
 
+func (p *replyPlayback) arm(
+	cancel context.CancelFunc,
+	track *lksdk.LocalTrack,
+	pub *lksdk.LocalTrackPublication,
+	room *lksdk.Room,
+) {
 	p.mu.Lock()
+	defer p.mu.Unlock()
 	if p.cancel != nil {
 		p.cancel()
 	}
@@ -103,23 +153,33 @@ func (p *replyPlayback) PlayOgg(ctx context.Context, room *lksdk.Room, ogg []byt
 	p.pub = pub
 	p.room = room
 	p.playing = true
-	p.mu.Unlock()
+}
 
-	defer p.clearIfCurrent(track)
+type playoutWait struct {
+	ctx     context.Context
+	playCtx context.Context
+	room    *lksdk.Room
+	track   *lksdk.LocalTrack
+	pub     *lksdk.LocalTrackPublication
+	done    <-chan struct{}
+}
 
+func waitPlayout(w playoutWait) error {
 	select {
-	case <-done:
+	case <-w.done:
 		return nil
-	case <-playCtx.Done():
-		_ = track.Close()
-		if pub != nil {
-			_ = room.LocalParticipant.UnpublishTrack(pub.SID())
-		}
-		if errors.Is(ctx.Err(), context.Canceled) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return ctx.Err()
-		}
-		return errReplyInterrupted
+	case <-w.playCtx.Done():
+		_ = w.track.Close()
+		unpublish(w.room, w.pub)
+		return playoutStopErr(w.ctx)
 	}
+}
+
+func playoutStopErr(ctx context.Context) error {
+	if errors.Is(ctx.Err(), context.Canceled) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return ctx.Err()
+	}
+	return errReplyInterrupted
 }
 
 func (p *replyPlayback) clearIfCurrent(track *lksdk.LocalTrack) {

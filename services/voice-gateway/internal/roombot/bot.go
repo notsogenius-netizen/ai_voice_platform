@@ -29,11 +29,26 @@ type Bot struct {
 
 // Join connects as voice-gateway, logs participants/tracks, and blocks until ctx ends.
 func (b Bot) Join(ctx context.Context, roomName string) error {
+	state, room, err := b.connect(ctx, roomName)
+	if err != nil {
+		return err
+	}
+	defer room.Disconnect()
+	defer state.tracks.closeAll()
+	defer state.playback.Interrupt()
+
+	log.Printf("roombot: joined room=%s as voice-gateway", roomName)
+	logExistingRemotes(room)
+	<-ctx.Done()
+	log.Printf("roombot: leaving room=%s", roomName)
+	return nil
+}
+
+func (b Bot) connect(ctx context.Context, roomName string) (*joinState, *lksdk.Room, error) {
 	jwt, err := b.Minter.Mint("voice-gateway", roomName, token.BotGrants())
 	if err != nil {
-		return fmt.Errorf("mint bot token: %w", err)
+		return nil, nil, fmt.Errorf("mint bot token: %w", err)
 	}
-
 	state := &joinState{
 		ctx:      ctx,
 		bot:      b,
@@ -47,19 +62,10 @@ func (b Bot) Join(ctx context.Context, roomName string) error {
 		lksdk.WithAutoSubscribe(true),
 	)
 	if err != nil {
-		return fmt.Errorf("connect bot to room %s: %w", roomName, err)
+		return nil, nil, fmt.Errorf("connect bot to room %s: %w", roomName, err)
 	}
-	defer room.Disconnect()
-	defer state.tracks.closeAll()
-	defer state.playback.Interrupt()
 	state.room.Store(room)
-
-	log.Printf("roombot: joined room=%s as voice-gateway", roomName)
-	logExistingRemotes(room)
-
-	<-ctx.Done()
-	log.Printf("roombot: leaving room=%s", roomName)
-	return nil
+	return state, room, nil
 }
 
 type joinState struct {
@@ -137,7 +143,14 @@ func (s *joinState) onTrackSubscribed(
 		s.toneOnce.Do(func() {
 			go s.publishToneWhenReady()
 		})
-		s.bot.startAudioTrack(s.ctx, roomName, track, rp, s.tracks, s.turnPipeline())
+		s.bot.startAudioTrack(audioTrackStart{
+			ctx:      s.ctx,
+			roomName: roomName,
+			track:    track,
+			rp:       rp,
+			tracks:   s.tracks,
+			pipeline: s.turnPipeline(),
+		})
 	}
 }
 

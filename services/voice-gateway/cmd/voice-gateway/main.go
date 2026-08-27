@@ -34,29 +34,44 @@ func run() error {
 	if err != nil {
 		return err
 	}
-
 	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	logDependencyStatus(cfg)
 
+	clients, err := newRuntimeClients(cfg)
+	if err != nil {
+		return err
+	}
+	srv, errCh := startServer(cfg, rootCtx, clients)
+	return waitForShutdown(rootCtx, srv, errCh)
+}
+
+func logDependencyStatus(cfg config.Config) {
 	logSTTStatus(cfg)
 	logTTSStatus(cfg)
 	logOrchestratorStatus(cfg)
+}
 
+type runtimeClients struct {
+	stt  stt.Client
+	tts  tts.Client
+	orch orchestrator.Client
+}
+
+func newRuntimeClients(cfg config.Config) (runtimeClients, error) {
 	sttClient, err := newSTTClient(cfg)
 	if err != nil {
-		return err
+		return runtimeClients{}, err
 	}
 	ttsClient, err := newTTSClient(cfg)
 	if err != nil {
-		return err
+		return runtimeClients{}, err
 	}
 	orchClient, err := newOrchestratorClient(cfg)
 	if err != nil {
-		return err
+		return runtimeClients{}, err
 	}
-
-	srv, errCh := startServer(cfg, rootCtx, sttClient, ttsClient, orchClient)
-	return waitForShutdown(rootCtx, srv, errCh)
+	return runtimeClients{stt: sttClient, tts: ttsClient, orch: orchClient}, nil
 }
 
 func logSTTStatus(cfg config.Config) {
@@ -127,12 +142,9 @@ func newOrchestratorClient(cfg config.Config) (orchestrator.Client, error) {
 func startServer(
 	cfg config.Config,
 	rootCtx context.Context,
-	sttClient stt.Client,
-	ttsClient tts.Client,
-	orchClient orchestrator.Client,
+	clients runtimeClients,
 ) (*http.Server, <-chan error) {
-	srv := newHTTPServer(cfg, rootCtx, sttClient, ttsClient, orchClient)
-
+	srv := newHTTPServer(cfg, rootCtx, clients)
 	errCh := make(chan error, 1)
 	go func() {
 		log.Printf("voice-gateway listening on %s", cfg.Addr)
@@ -141,39 +153,35 @@ func startServer(
 	return srv, errCh
 }
 
-func newHTTPServer(
-	cfg config.Config,
-	rootCtx context.Context,
-	sttClient stt.Client,
-	ttsClient tts.Client,
-	orchClient orchestrator.Client,
-) *http.Server {
+func newHTTPServer(cfg config.Config, rootCtx context.Context, clients runtimeClients) *http.Server {
 	minter := token.Minter{
 		APIKey:    cfg.LiveKitAPIKey,
 		APISecret: cfg.LiveKitAPISecret,
 		ValidFor:  time.Hour,
 	}
-
 	deps := httpserver.Deps{
 		Sessions: session.Service{
 			LiveKitURL: cfg.LiveKitURL,
 			Minter:     minter,
 			RootCtx:    rootCtx,
-			Bot: roombot.Bot{
-				LiveKitURL:    cfg.LiveKitURL,
-				Minter:        minter,
-				STTSampleRate: cfg.STTSampleRate,
-				STT:           sttClient,
-				TTS:           ttsClient,
-				Orchestrator:  orchClient,
-			},
+			Bot:        newRoomBot(cfg, minter, clients),
 		},
 	}
-
 	return &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           httpserver.NewMux(cfg, deps),
 		ReadHeaderTimeout: 5 * time.Second,
+	}
+}
+
+func newRoomBot(cfg config.Config, minter token.Minter, clients runtimeClients) roombot.Bot {
+	return roombot.Bot{
+		LiveKitURL:    cfg.LiveKitURL,
+		Minter:        minter,
+		STTSampleRate: cfg.STTSampleRate,
+		STT:           clients.stt,
+		TTS:           clients.tts,
+		Orchestrator:  clients.orch,
 	}
 }
 

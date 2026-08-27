@@ -33,43 +33,65 @@ func (b *sentenceBuffer) extract(flush bool) []string {
 	if raw == "" {
 		return nil
 	}
+	out, start := splitSentences(raw, flush)
+	b.replaceRemainder(raw[start:], flush)
+	return out
+}
 
+func splitSentences(raw string, flush bool) ([]string, int) {
 	var out []string
 	start := 0
 	for i := 0; i < len(raw); i++ {
-		if !isSentenceEnd(raw[i]) {
+		end, ok := sentenceBoundary(raw, i, flush)
+		if !ok {
 			continue
 		}
-		j := i + 1
-		for j < len(raw) && (raw[j] == '"' || raw[j] == '\'' || raw[j] == ')') {
-			j++
-		}
-		if j < len(raw) && !unicode.IsSpace(rune(raw[j])) && !flush {
-			continue
-		}
-		sentence := strings.TrimSpace(raw[start:j])
-		if sentence != "" {
+		if sentence := strings.TrimSpace(raw[start:end]); sentence != "" {
 			out = append(out, sentence)
 		}
-		for j < len(raw) && unicode.IsSpace(rune(raw[j])) {
-			j++
-		}
-		start = j
-		i = j - 1
+		start = skipSpaces(raw, end)
+		i = start - 1
 	}
-
 	if flush {
-		rest := strings.TrimSpace(raw[start:])
-		if rest != "" {
+		if rest := strings.TrimSpace(raw[start:]); rest != "" {
 			out = append(out, rest)
 		}
-		b.buf.Reset()
-		return out
+		return out, len(raw)
 	}
+	return out, start
+}
 
+func sentenceBoundary(raw string, i int, flush bool) (int, bool) {
+	if !isSentenceEnd(raw[i]) {
+		return 0, false
+	}
+	j := skipClosers(raw, i+1)
+	if j < len(raw) && !unicode.IsSpace(rune(raw[j])) && !flush {
+		return 0, false
+	}
+	return j, true
+}
+
+func skipClosers(raw string, j int) int {
+	for j < len(raw) && (raw[j] == '"' || raw[j] == '\'' || raw[j] == ')') {
+		j++
+	}
+	return j
+}
+
+func skipSpaces(raw string, j int) int {
+	for j < len(raw) && unicode.IsSpace(rune(raw[j])) {
+		j++
+	}
+	return j
+}
+
+func (b *sentenceBuffer) replaceRemainder(rest string, flush bool) {
 	b.buf.Reset()
-	b.buf.WriteString(raw[start:])
-	return out
+	if flush {
+		return
+	}
+	b.buf.WriteString(rest)
 }
 
 func isSentenceEnd(c byte) bool {

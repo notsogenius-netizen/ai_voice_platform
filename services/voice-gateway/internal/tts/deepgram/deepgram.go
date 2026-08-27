@@ -61,36 +61,41 @@ func (c *Client) Synthesize(ctx context.Context, req tts.Request) (tts.Audio, er
 	if text == "" {
 		return tts.Audio{}, errors.New("deepgram tts: text is required")
 	}
-
-	body, err := json.Marshal(speakRequest{Text: text})
-	if err != nil {
-		return tts.Audio{}, fmt.Errorf("deepgram tts encode: %w", err)
-	}
-
-	speakURL, err := c.speakURL()
+	httpReq, err := c.newSpeakRequest(ctx, text)
 	if err != nil {
 		return tts.Audio{}, err
 	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, speakURL, bytes.NewReader(body))
-	if err != nil {
-		return tts.Audio{}, fmt.Errorf("deepgram tts build request: %w", err)
-	}
-	httpReq.Header.Set("Authorization", "Token "+c.cfg.APIKey)
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Accept", "audio/ogg")
-
 	resp, err := c.postFn(httpReq)
 	if err != nil {
 		return tts.Audio{}, fmt.Errorf("deepgram tts request: %w", err)
 	}
 	defer resp.Body.Close()
+	return readSpeakResponse(resp)
+}
 
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		msg := readErrorBody(resp.Body)
-		return tts.Audio{}, fmt.Errorf("deepgram tts status %d: %s", resp.StatusCode, msg)
+func (c *Client) newSpeakRequest(ctx context.Context, text string) (*http.Request, error) {
+	body, err := json.Marshal(speakRequest{Text: text})
+	if err != nil {
+		return nil, fmt.Errorf("deepgram tts encode: %w", err)
 	}
+	speakURL, err := c.speakURL()
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, speakURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("deepgram tts build request: %w", err)
+	}
+	httpReq.Header.Set("Authorization", "Token "+c.cfg.APIKey)
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "audio/ogg")
+	return httpReq, nil
+}
 
+func readSpeakResponse(resp *http.Response) (tts.Audio, error) {
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return tts.Audio{}, fmt.Errorf("deepgram tts status %d: %s", resp.StatusCode, readErrorBody(resp.Body))
+	}
 	ogg, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return tts.Audio{}, fmt.Errorf("deepgram tts read body: %w", err)
@@ -98,7 +103,6 @@ func (c *Client) Synthesize(ctx context.Context, req tts.Request) (tts.Audio, er
 	if len(ogg) == 0 {
 		return tts.Audio{}, errors.New("deepgram tts: empty audio body")
 	}
-
 	return tts.Audio{Ogg: ogg}, nil
 }
 

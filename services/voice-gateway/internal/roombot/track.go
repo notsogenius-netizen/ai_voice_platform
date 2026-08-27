@@ -73,25 +73,27 @@ func (t *audioTrack) close() {
 	}
 }
 
-func (b Bot) startAudioTrack(
-	ctx context.Context,
-	roomName string,
-	track *webrtc.TrackRemote,
-	rp *lksdk.RemoteParticipant,
-	tracks *trackSet,
-	pipeline *turnPipeline,
-) {
-	label, sess := trackSTTSession(roomName, rp, track)
-	trackCtx, cancel := context.WithCancel(ctx)
-	pipe := b.openSTTStream(trackCtx, sess, label, pipeline)
+type audioTrackStart struct {
+	ctx      context.Context
+	roomName string
+	track    *webrtc.TrackRemote
+	rp       *lksdk.RemoteParticipant
+	tracks   *trackSet
+	pipeline *turnPipeline
+}
 
-	pcmTrack, err := pcm.StartRemoteTrack(trackCtx, track, b.STTSampleRate, label, pipe.writeFn())
+func (b Bot) startAudioTrack(args audioTrackStart) {
+	label, sess := trackSTTSession(args.roomName, args.rp, args.track)
+	trackCtx, cancel := context.WithCancel(args.ctx)
+	pipe := b.openSTTStream(trackCtx, sess, label, args.pipeline)
+
+	pcmTrack, err := pcm.StartRemoteTrack(trackCtx, args.track, b.STTSampleRate, label, pipe.writeFn())
 	if err != nil {
 		abortAudioTrack(cancel, pipe, label, err)
 		return
 	}
 
-	tracks.add(track.ID(), &audioTrack{
+	args.tracks.add(args.track.ID(), &audioTrack{
 		cancel: cancel,
 		pcm:    pcmTrack,
 		stt:    pipe,

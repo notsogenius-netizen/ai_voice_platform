@@ -81,7 +81,6 @@ func readTranscripts(ctx context.Context, pipe *sttPipe, pipeline *turnPipeline)
 	if pipe == nil {
 		return
 	}
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -91,146 +90,36 @@ func readTranscripts(ctx context.Context, pipe *sttPipe, pipeline *turnPipeline)
 				pipe.end(errors.New("transcript channel closed"))
 				return
 			}
-			logTranscript(tr)
-			if pipeline == nil {
-				continue
-			}
-			if pipeline.playback != nil && pipeline.playback.Playing() && strings.TrimSpace(tr.Text) != "" {
-				log.Printf(
-					"roombot: barge-in room=%s identity=%s track=%s",
-					tr.Session.Room,
-					tr.Session.Participant,
-					tr.Session.TrackID,
-				)
-				pipeline.playback.Interrupt()
-			}
-			if pipeline.orch != nil && tr.IsFinal {
-				go pipeline.handleFinal(ctx, tr)
-			}
+			dispatchTranscript(ctx, pipeline, tr)
 		}
 	}
 }
 
-func (p *turnPipeline) handleFinal(ctx context.Context, tr stt.Transcript) {
-	if p == nil || p.orch == nil {
+func dispatchTranscript(ctx context.Context, pipeline *turnPipeline, tr stt.Transcript) {
+	logTranscript(tr)
+	if pipeline == nil {
 		return
 	}
-	if p.turnMu != nil {
-		p.turnMu.Lock()
-		defer p.turnMu.Unlock()
+	maybeBargeIn(pipeline, tr)
+	if pipeline.orch != nil && tr.IsFinal {
+		go pipeline.handleFinal(ctx, tr)
 	}
-	if p.playback != nil {
-		p.playback.Interrupt()
-	}
+}
 
-	var buf sentenceBuffer
-	spoke := false
-	speak := func(text string) error {
-		text = strings.TrimSpace(text)
-		if text == "" {
-			return nil
-		}
-		if err := p.speakSentence(ctx, tr.Session.Room, text); err != nil {
-			return err
-		}
-		spoke = true
-		return nil
-	}
-
-	reply, err := p.orch.StreamTurn(ctx, orchestrator.Turn{
-		SessionID: tr.Session.Room,
-		Text:      tr.Text,
-		IsFinal:   true,
-	}, func(chunk string) error {
-		for _, sentence := range buf.Push(chunk) {
-			if err := speak(sentence); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		if errors.Is(err, errReplyInterrupted) {
-			log.Printf(
-				"roombot: reply interrupted room=%s identity=%s track=%s",
-				tr.Session.Room,
-				tr.Session.Participant,
-				tr.Session.TrackID,
-			)
-			return
-		}
-		log.Printf(
-			"orchestrator: turn failed room=%s identity=%s track=%s: %v",
-			tr.Session.Room,
-			tr.Session.Participant,
-			tr.Session.TrackID,
-			err,
-		)
-		if p.playback != nil {
-			p.playback.Interrupt()
-		}
+func maybeBargeIn(pipeline *turnPipeline, tr stt.Transcript) {
+	if pipeline.playback == nil || !pipeline.playback.Playing() {
 		return
 	}
-	if reply.Ignored {
+	if strings.TrimSpace(tr.Text) == "" {
 		return
 	}
 	log.Printf(
-		"orchestrator: forwarded turn room=%s identity=%s track=%s",
+		"roombot: barge-in room=%s identity=%s track=%s",
 		tr.Session.Room,
 		tr.Session.Participant,
 		tr.Session.TrackID,
 	)
-
-	if rest := buf.Flush(); rest != "" {
-		if err := speak(rest); err != nil {
-			if errors.Is(err, errReplyInterrupted) {
-				log.Printf("roombot: reply interrupted room=%s", tr.Session.Room)
-				return
-			}
-			log.Printf("tts: speak failed room=%s: %v", tr.Session.Room, err)
-			if p.playback != nil {
-				p.playback.Interrupt()
-			}
-			return
-		}
-	}
-
-	if !spoke && reply.Text != "" {
-		if err := speak(reply.Text); err != nil {
-			if errors.Is(err, errReplyInterrupted) {
-				log.Printf("roombot: reply interrupted room=%s", tr.Session.Room)
-				return
-			}
-			log.Printf("tts: speak failed room=%s: %v", tr.Session.Room, err)
-			if p.playback != nil {
-				p.playback.Interrupt()
-			}
-			return
-		}
-	}
-}
-
-func (p *turnPipeline) speakSentence(ctx context.Context, roomName, text string) error {
-	text = strings.TrimSpace(text)
-	if text == "" || p.tts == nil {
-		return nil
-	}
-
-	audio, err := p.tts.Synthesize(ctx, tts.Request{Text: text})
-	if err != nil {
-		return err
-	}
-	log.Printf("tts: synthesized room=%s bytes=%d", roomName, len(audio.Ogg))
-
-	room := (*lksdk.Room)(nil)
-	if p.room != nil {
-		room = p.room()
-	}
-	if room == nil || p.playback == nil {
-		log.Printf("tts: skipped_publish room=%s", roomName)
-		return nil
-	}
-	return p.playback.PlayOgg(ctx, room, audio.Ogg)
+	pipeline.playback.Interrupt()
 }
 
 // forwardFinalTranscript is retained for focused unit tests of orchestrator forwarding.
